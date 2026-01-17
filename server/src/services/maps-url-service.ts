@@ -1,11 +1,10 @@
 /**
- * URL Service - Google Maps URL生成
+ * Maps URL Service - Google Maps URL生成
  */
 
-import { logger } from '../utils/logger.js';
-import type { Coordinates, RouteConstraints, GoogleMapsUrlParams } from '../types/index.js';
+import type { Coordinates, RouteConstraints } from "../types/route.types.js";
 
-const GOOGLE_MAPS_DIRECTIONS_URL = 'https://www.google.com/maps/dir/';
+const GOOGLE_MAPS_DIRECTIONS_URL = "https://www.google.com/maps/dir/";
 
 export interface RouteUrlParams {
   origin: {
@@ -28,20 +27,18 @@ export interface RouteUrlParams {
  * @see https://developers.google.com/maps/documentation/urls/get-started#directions-action
  */
 export function generateGoogleMapsUrl(params: RouteUrlParams): string {
-  logger.debug({ params }, 'Generating Google Maps URL');
-
   const url = new URL(GOOGLE_MAPS_DIRECTIONS_URL);
-  url.searchParams.set('api', '1');
+  url.searchParams.set("api", "1");
 
   // 出発地（座標形式）
   url.searchParams.set(
-    'origin',
+    "origin",
     `${params.origin.location.lat},${params.origin.location.lng}`
   );
 
   // 目的地（座標形式）
   url.searchParams.set(
-    'destination',
+    "destination",
     `${params.destination.location.lat},${params.destination.location.lng}`
   );
 
@@ -50,29 +47,26 @@ export function generateGoogleMapsUrl(params: RouteUrlParams): string {
     const waypointCoords = params.waypoints
       .slice(0, 2)
       .map((wp) => `${wp.location.lat},${wp.location.lng}`)
-      .join('|');
-    url.searchParams.set('waypoints', waypointCoords);
+      .join("|");
+    url.searchParams.set("waypoints", waypointCoords);
   }
 
   // 移動モード
-  url.searchParams.set('travelmode', 'driving');
+  url.searchParams.set("travelmode", "driving");
 
   // 回避設定
   const avoidOptions: string[] = [];
   if (params.constraints?.avoidHighways) {
-    avoidOptions.push('highways');
+    avoidOptions.push("highways");
   }
   if (params.constraints?.avoidTolls) {
-    avoidOptions.push('tolls');
+    avoidOptions.push("tolls");
   }
   if (avoidOptions.length > 0) {
-    url.searchParams.set('avoid', avoidOptions.join('|'));
+    url.searchParams.set("avoid", avoidOptions.join("|"));
   }
 
-  const generatedUrl = url.toString();
-  logger.debug({ generatedUrl }, 'Google Maps URL generated');
-
-  return generatedUrl;
+  return url.toString();
 }
 
 /**

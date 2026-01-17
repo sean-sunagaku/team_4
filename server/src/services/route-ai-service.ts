@@ -1,25 +1,17 @@
 /**
- * AI Service - Qwen API連携による経由地選択
+ * Route AI Service - Qwen API連携による経由地選択
  */
 
-import OpenAI from 'openai';
-import { env } from '../config/env.js';
-import { AppError } from '../errors/AppError.js';
-import { logger } from '../utils/logger.js';
+import OpenAI from "openai";
 import {
+  RouteError,
   AIRouteSelectionSchema,
-  type AIRouteSelectionResponse,
-} from '../types/api.js';
-import type { POICandidate, PracticeType } from '../types/index.js';
-import {
   PRACTICE_TYPE_LABELS,
   PRACTICE_TYPE_DESCRIPTIONS,
-} from '../types/practice.js';
-
-const openai = new OpenAI({
-  apiKey: env.QWEN_API_KEY,
-  baseURL: env.QWEN_BASE_URL,
-});
+  type AIRouteSelectionResponse,
+  type POICandidate,
+  type PracticeType,
+} from "../types/route.types.js";
 
 const MAX_RETRIES = 2;
 
@@ -29,27 +21,41 @@ interface AISelectionParams {
   candidates: POICandidate[];
 }
 
+function getOpenAIClient(): OpenAI {
+  const apiKey = process.env.QWEN_API_KEY;
+  const baseURL = process.env.QWEN_BASE_URL;
+
+  if (!apiKey) {
+    throw RouteError.internal("QWEN_API_KEY is not set");
+  }
+  if (!baseURL) {
+    throw RouteError.internal("QWEN_BASE_URL is not set");
+  }
+
+  return new OpenAI({
+    apiKey,
+    baseURL,
+  });
+}
+
 /**
  * AIによるルート選択
  */
 export async function selectRouteWithAI(
   params: AISelectionParams
 ): Promise<AIRouteSelectionResponse> {
-  logger.debug(
-    { practiceType: params.practiceType, candidateCount: params.candidates.length },
-    'Requesting AI route selection'
-  );
-
+  const model = process.env.QWEN_MODEL || "qwen-plus";
+  const openai = getOpenAIClient();
   const prompt = buildPrompt(params);
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
       const response = await openai.chat.completions.create({
-        model: env.QWEN_MODEL,
+        model,
         max_tokens: 1024,
         messages: [
           {
-            role: 'user',
+            role: "user",
             content: prompt,
           },
         ],
@@ -57,24 +63,23 @@ export async function selectRouteWithAI(
 
       const textContent = response.choices[0]?.message?.content;
       if (!textContent) {
-        throw new Error('No text response from AI');
+        throw new Error("No text response from AI");
       }
 
       const parsed = parseAndValidateResponse(textContent, params.candidates);
-      logger.debug({ parsed }, 'AI route selection successful');
       return parsed;
     } catch (error) {
-      logger.warn({ attempt, error }, 'AI selection attempt failed');
+      console.warn(`AI selection attempt ${attempt} failed:`, error);
       if (attempt === MAX_RETRIES) {
-        throw AppError.aiService(
-          'AI route selection failed after retries',
+        throw RouteError.aiService(
+          "AI route selection failed after retries",
           { error: error instanceof Error ? error.message : String(error) }
         );
       }
     }
   }
 
-  throw AppError.aiService('AI route selection failed');
+  throw RouteError.aiService("AI route selection failed");
 }
 
 function buildPrompt(params: AISelectionParams): string {
@@ -84,9 +89,9 @@ function buildPrompt(params: AISelectionParams): string {
   const candidatesList = params.candidates
     .map(
       (c, i) =>
-        `${i + 1}. ID: "${c.id}"\n   名前: ${c.name}\n   住所: ${c.address}\n   種類: ${c.types.join(', ')}`
+        `${i + 1}. ID: "${c.id}"\n   名前: ${c.name}\n   住所: ${c.address}\n   種類: ${c.types.join(", ")}`
     )
-    .join('\n');
+    .join("\n");
 
   return `あなたは運転練習ルートの専門家です。以下の条件で最適な練習ルートを提案してください。
 
