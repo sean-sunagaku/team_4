@@ -157,4 +157,118 @@ export const chatApi = {
       throw new Error("Failed to update title");
     }
   },
+
+  // Voice chat - send audio and receive streaming response
+  async sendVoiceMessage(
+    audioData: string,
+    audioFormat: string,
+    conversationId: string | undefined,
+    callbacks: {
+      onTranscription?: (text: string) => void;
+      onConversationCreated?: (id: string) => void;
+      onChunk?: (chunk: string) => void;
+      onAudio?: (url: string, index?: number) => void;
+      onDone?: (content: string, conversationId: string) => void;
+      onError?: (error: string) => void;
+    }
+  ): Promise<void> {
+    const response = await fetch(`${API_URL}/api/voice/chat`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ audioData, audioFormat, conversationId }),
+    });
+
+    if (!response.ok) {
+      throw new Error("Failed to send voice message");
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error("No response body");
+    }
+
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n\n");
+      buffer = lines.pop() || "";
+
+      for (const line of lines) {
+        if (line.startsWith("data: ")) {
+          try {
+            const data = JSON.parse(line.slice(6));
+
+            switch (data.type) {
+              case "transcription":
+                callbacks.onTranscription?.(data.text);
+                break;
+              case "conversation":
+                callbacks.onConversationCreated?.(data.id);
+                break;
+              case "text":
+                callbacks.onChunk?.(data.content);
+                break;
+              case "audio":
+                callbacks.onAudio?.(data.url, data.index);
+                break;
+              case "done":
+                callbacks.onDone?.(data.content, data.conversationId);
+                break;
+              case "error":
+                callbacks.onError?.(data.message);
+                break;
+            }
+          } catch (e) {
+            console.error("Failed to parse SSE data:", e);
+          }
+        }
+      }
+    }
+  },
+
+  // Simple transcription - just convert audio to text
+  async transcribeAudio(
+    audioData: string,
+    audioFormat: string = "webm"
+  ): Promise<string> {
+    const response = await fetch(`${API_URL}/api/voice/transcribe`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ audioData, audioFormat }),
+    });
+
+    if (!response.ok) {
+      throw new Error("Failed to transcribe audio");
+    }
+
+    const data = await response.json();
+    return data.text;
+  },
+
+  // Simple TTS - convert text to audio URL
+  async synthesizeSpeech(text: string): Promise<string> {
+    const response = await fetch(`${API_URL}/api/voice/synthesize`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ text }),
+    });
+
+    if (!response.ok) {
+      throw new Error("Failed to synthesize speech");
+    }
+
+    const data = await response.json();
+    return data.audioUrl;
+  },
 };

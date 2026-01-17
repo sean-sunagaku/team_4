@@ -3,14 +3,13 @@ import { cors } from "hono/cors";
 import { streamSSE } from "hono/streaming";
 import dotenv from "dotenv";
 import { chatService } from "./services/chat-service.js";
-import { AIService } from "./services/ai-service.js";
 import { searchWeb, getCurrentDateTime, formatSearchResultsForAI } from "./services/search-service.js";
 import { ragService } from "./services/rag-service.js";
+import { qwenASRService } from "./services/qwen-asr-service.js";
+import { qwenLLMService } from "./services/qwen-llm-service.js";
+import { qwenTTSService } from "./services/qwen-tts-service.js";
 
 dotenv.config();
-
-// Initialize AI service
-const aiService = new AIService();
 
 // Anonymous user ID (no authentication)
 const ANONYMOUS_USER_ID = "anonymous-user";
@@ -244,13 +243,15 @@ app.post("/api/chat/conversations/:id/messages/stream", async (c) => {
 
       let fullContent = "";
 
-      // Stream AI response
-      const result = await aiService.sendMessage(aiMessages, (chunk: string) => {
-        fullContent += chunk;
-        stream.writeSSE({ data: JSON.stringify({ type: "text", content: chunk }) });
+      // Stream AI response using Qwen LLM
+      await qwenLLMService.sendMessageStream(aiMessages, {
+        onChunk: (chunk: string) => {
+          fullContent += chunk;
+          stream.writeSSE({ data: JSON.stringify({ type: "text", content: chunk }) });
+        },
       });
 
-      const aiResponse = result.content || fullContent || "申し訳ありません、応答を生成できませんでした。";
+      const aiResponse = fullContent || "申し訳ありません、応答を生成できませんでした。";
 
       // OPTIMIZATION: Post-stream operations run in background (non-blocking)
       const postStreamOps = async () => {
@@ -436,6 +437,237 @@ app.get("/api/rag/search", async (c) => {
     console.error("Error searching RAG:", error);
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
     return c.json({ error: `Failed to search: ${errorMessage}` }, 500);
+  }
+});
+
+// ============================================
+// Voice Chat API Endpoints (Qwen ASR + LLM + TTS)
+// ============================================
+
+// Voice chat endpoint - receives audio, returns text + audio response
+app.post("/api/voice/chat", async (c) => {
+  let audioData: string;
+  let audioFormat: string;
+  let conversationId: string | undefined;
+
+  try {
+    const body = await c.req.json();
+    audioData = body.audioData;
+    audioFormat = body.audioFormat || "webm";
+    conversationId = body.conversationId;
+  } catch {
+    return c.json({ error: "Invalid request body" }, 400);
+  }
+
+  if (!audioData) {
+    return c.json({ error: "Audio data is required" }, 400);
+  }
+
+  return streamSSE(c, async (stream) => {
+    try {
+      // Step 1: ASR - Convert audio to text
+      console.log("Starting ASR transcription...");
+      const asrResult = await qwenASRService.transcribeAudio(audioData, audioFormat);
+
+      if (!asrResult.success || !asrResult.text) {
+        await stream.writeSSE({
+          data: JSON.stringify({
+            type: "error",
+            message: asrResult.error || "Failed to transcribe audio",
+          }),
+        });
+        return;
+      }
+
+      const userText = asrResult.text;
+      console.log("ASR transcription completed:", userText);
+
+      // Send transcription to client
+      await stream.writeSSE({
+        data: JSON.stringify({ type: "transcription", text: userText }),
+      });
+
+      // Get or create conversation
+      let convId = conversationId;
+      if (!convId) {
+        const conversation = await chatService.createConversation(ANONYMOUS_USER_ID);
+        convId = conversation.id;
+        await stream.writeSSE({
+          data: JSON.stringify({ type: "conversation", id: convId }),
+        });
+      }
+
+      // Save user message (fire-and-forget)
+      chatService.addMessage(convId, "user", userText).catch((err) => {
+        console.error("Failed to save user message:", err);
+      });
+
+      // Step 2: Build messages for LLM
+      const systemPrompt = buildSystemPrompt();
+      const existingMessages = await chatService.getMessages(convId);
+      const aiMessages = [
+        { role: "system" as const, content: systemPrompt },
+        ...chatService.formatMessagesForAI(existingMessages),
+        { role: "user" as const, content: userText },
+      ];
+
+      // Step 3: LLM - Generate response with streaming TTS
+      console.log("Starting LLM generation with streaming TTS...");
+      let fullContent = "";
+      let sentenceBuffer = "";
+      let audioIndex = 0;
+      const pendingTTS: Promise<void>[] = [];
+
+      // Sentence boundary patterns
+      const sentenceEndPattern = /[。！？\n]/;
+
+      // Emoji pattern for filtering
+      const emojiPattern = /[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[\u{1F600}-\u{1F64F}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]/gu;
+
+      // Helper to get text without emojis
+      const getTextOnly = (text: string) => text.replace(emojiPattern, '').trim();
+
+      // Function to send a sentence to TTS
+      const sendToTTS = async (sentence: string, index: number) => {
+        const textOnly = getTextOnly(sentence);
+        if (!textOnly) return;
+        console.log(`TTS[${index}]: "${textOnly.slice(0, 30)}..."`);
+
+        const ttsResult = await qwenTTSService.synthesizeSpeech(textOnly);
+        if (ttsResult.success && ttsResult.audioUrl) {
+          await stream.writeSSE({
+            data: JSON.stringify({
+              type: "audio",
+              url: ttsResult.audioUrl,
+              index: index
+            }),
+          });
+          console.log(`TTS[${index}] completed`);
+        }
+      };
+
+      await qwenLLMService.sendMessageStream(aiMessages, {
+        onChunk: async (chunk) => {
+          fullContent += chunk;
+          sentenceBuffer += chunk;
+
+          // Send text chunk to client
+          await stream.writeSSE({
+            data: JSON.stringify({ type: "text", content: chunk }),
+          });
+
+          // Check for sentence boundaries
+          while (sentenceEndPattern.test(sentenceBuffer)) {
+            const match = sentenceBuffer.match(sentenceEndPattern);
+            if (match && match.index !== undefined) {
+              const sentence = sentenceBuffer.slice(0, match.index + 1);
+              sentenceBuffer = sentenceBuffer.slice(match.index + 1);
+
+              // Only send to TTS if sentence has actual text content (not just emojis)
+              if (getTextOnly(sentence)) {
+                const currentIndex = audioIndex++;
+                pendingTTS.push(sendToTTS(sentence, currentIndex));
+              }
+            }
+          }
+        },
+      });
+
+      // Send any remaining text to TTS
+      if (getTextOnly(sentenceBuffer)) {
+        const currentIndex = audioIndex++;
+        pendingTTS.push(sendToTTS(sentenceBuffer, currentIndex));
+      }
+
+      const aiResponse = fullContent || "申し訳ありません、応答を生成できませんでした。";
+      console.log("LLM generation completed");
+
+      // Save AI response (fire-and-forget)
+      chatService.addMessage(convId, "assistant", aiResponse).catch((err) => {
+        console.error("Failed to save AI message:", err);
+      });
+
+      // Update conversation title if first message
+      const userMessages = existingMessages.filter((m: { role: string }) => m.role === "user");
+      if (userMessages.length === 0) {
+        const title = userText.slice(0, 50) + (userText.length > 50 ? "..." : "");
+        chatService.updateTitle(convId, title).catch((err) => {
+          console.error("Failed to update title:", err);
+        });
+      }
+
+      // Wait for all TTS to complete
+      await Promise.all(pendingTTS);
+
+      // Send completion
+      await stream.writeSSE({
+        data: JSON.stringify({
+          type: "done",
+          content: aiResponse,
+          conversationId: convId,
+        }),
+      });
+    } catch (error) {
+      console.error("Error in voice chat:", error);
+      await stream.writeSSE({
+        data: JSON.stringify({
+          type: "error",
+          message: error instanceof Error ? error.message : "Unknown error",
+        }),
+      });
+    }
+  });
+});
+
+// Simple ASR endpoint - just transcribe audio
+app.post("/api/voice/transcribe", async (c) => {
+  try {
+    const body = await c.req.json();
+    const { audioData, audioFormat } = body as {
+      audioData: string;
+      audioFormat?: string;
+    };
+
+    if (!audioData) {
+      return c.json({ error: "Audio data is required" }, 400);
+    }
+
+    const result = await qwenASRService.transcribeAudio(audioData, audioFormat || "webm");
+
+    if (!result.success) {
+      return c.json({ error: result.error }, 500);
+    }
+
+    return c.json({ text: result.text });
+  } catch (error) {
+    console.error("Error transcribing audio:", error);
+    return c.json({ error: "Failed to transcribe audio" }, 500);
+  }
+});
+
+// Simple TTS endpoint - just synthesize speech
+app.post("/api/voice/synthesize", async (c) => {
+  try {
+    const body = await c.req.json();
+    const { text, voice } = body as {
+      text: string;
+      voice?: string;
+    };
+
+    if (!text || text.trim().length === 0) {
+      return c.json({ error: "Text is required" }, 400);
+    }
+
+    const result = await qwenTTSService.synthesizeSpeech(text, voice);
+
+    if (!result.success) {
+      return c.json({ error: result.error }, 500);
+    }
+
+    return c.json({ audioUrl: result.audioUrl });
+  } catch (error) {
+    console.error("Error synthesizing speech:", error);
+    return c.json({ error: "Failed to synthesize speech" }, 500);
   }
 });
 
