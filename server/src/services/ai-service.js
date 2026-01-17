@@ -14,10 +14,10 @@ export class AIService {
   }
 
   /**
-   * Send a message and get streaming response
+   * Send a message and get streaming response (optimized)
    * @param {Array} messages - Array of message objects {role, content}
    * @param {Function} onChunk - Callback for each text chunk
-   * @returns {Promise<Object>} Full response with content and usage
+   * @returns {Promise<Object>} Full response with content
    */
   async sendMessage(messages, onChunk) {
     try {
@@ -39,26 +39,17 @@ export class AIService {
 
       let fullResponse = "";
 
-      for await (const part of result.fullStream) {
-        if (part.type === "text-delta") {
-          const delta = part.textDelta || part.text || "";
-          fullResponse += delta;
-          if (onChunk && delta) {
-            onChunk(delta);
-          }
+      // Optimized: Use textStream directly (lighter than fullStream)
+      for await (const chunk of result.textStream) {
+        fullResponse += chunk;
+        if (onChunk && chunk) {
+          onChunk(chunk);
         }
       }
 
-      const [finishReason, usage, text] = await Promise.all([
-        result.finishReason,
-        result.usage,
-        result.text,
-      ]);
-
+      // Optimized: Return immediately without waiting for additional metadata
       return {
-        content: text || fullResponse,
-        finishReason,
-        usage,
+        content: fullResponse,
       };
     } catch (error) {
       console.error("AI Service Error:", error.message);
