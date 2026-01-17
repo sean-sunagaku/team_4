@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>現在地取得</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      padding: 20px;
+    }
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    #result {
+      margin-top: 20px;
+      padding: 15px;
+      background: #f5f5f5;
+      border-radius: 8px;
+      display: none;
+    }
+    #result.show {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <h1>現在地を取得</h1>
+  <button onclick="handleGetLocation()">現在地を取得</button>
+
+  <div id="result">
+    <p><strong>緯度:</strong> <span id="lat"></span></p>
+    <p><strong>経度:</strong> <span id="lon"></span></p>
+    <p><strong>都市:</strong> <span id="city"></span></p>
+  </div>
+
+  <script src="geolocation.js"></script>
+  <script>
+    function handleGetLocation() {
+      getLocation(
+        function (result) {
+          document.getElementById("lat").textContent = result.latitude;
+          document.getElementById("lon").textContent = result.longitude;
+          document.getElementById("city").textContent = result.city + ', ' + result.region;
+          document.getElementById("result").classList.add("show");
+        },
+        function (error) {
+          alert("位置情報の取得に失敗しました: " + error.message);
+        }
+      );
+    }
+  </script>
+</body>
+</html>
