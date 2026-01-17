@@ -39,6 +39,7 @@ services:
       - ./python-container/yolov8n.pt:/app/yolov8n.pt:ro
     environment:
       - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/app/src
       - YOLO_MODEL=/app/yolov8n.pt
     command: ["uvicorn", "speed_detector.api.simple:app", "--host", "0.0.0.0", "--port", "9000", "--reload"]
 

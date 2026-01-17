@@ -110,6 +110,21 @@ app = FastAPI(
     version="0.1.0",
 )
 
+# Add CORS middleware for frontend
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Include frames WebSocket router
+from .routes.frames import router as frames_router
+app.include_router(frames_router)
+
 # 動画保存ディレクトリ
 UPLOAD_DIR = Path("/app/uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
@@ -216,6 +231,20 @@ async def root():
 async def health():
     """Health check endpoint."""
     return {"status": "healthy"}
+
+
+@app.get("/sample-video")
+async def get_sample_video():
+    """サンプル動画を提供"""
+    sample_path = UPLOAD_DIR / "sample_movie.mp4"
+    if not sample_path.exists():
+        raise HTTPException(status_code=404, detail="Sample video not found")
+
+    return FileResponse(
+        path=str(sample_path),
+        filename="sample_movie.mp4",
+        media_type="video/mp4"
+    )
 
 
 # ============== Video Endpoints ==============
