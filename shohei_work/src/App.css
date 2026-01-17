@@ -1,0 +1,66 @@
+.app-container {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.error-message {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  text-align: center;
+  padding: 2rem;
+  overflow-y: auto;
+}
+
+.error-message h1 {
+  font-size: 2rem;
+  margin-bottom: 1.5rem;
+}
+
+.error-instructions {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 2rem;
+  max-width: 600px;
+  text-align: left;
+  margin-top: 1rem;
+}
+
+.error-instructions p {
+  font-size: 1.1rem;
+  margin-bottom: 1rem;
+  opacity: 0.95;
+}
+
+.error-instructions ol {
+  margin-left: 1.5rem;
+  margin-bottom: 1rem;
+  line-height: 2;
+}
+
+.error-instructions li {
+  margin-bottom: 0.5rem;
+  font-size: 1rem;
+}
+
+.error-instructions code {
+  background: rgba(0, 0, 0, 0.3);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-family: 'Courier New', monospace;
+  font-size: 0.9rem;
+}
+
+.error-note {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.3);
+  font-size: 1rem;
+  opacity: 0.9;
+}
