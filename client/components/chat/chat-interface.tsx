@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import ReactMarkdown from "react-markdown";
 import { chatApi } from "@/lib/chat-api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -714,9 +715,15 @@ export function ChatInterface() {
                             : "bg-neutral-100 text-neutral-900"
                         }`}
                       >
-                        <p className="text-sm whitespace-pre-wrap">
-                          {message.content}
-                        </p>
+                        {message.role === "user" ? (
+                          <p className="text-sm whitespace-pre-wrap">
+                            {message.content}
+                          </p>
+                        ) : (
+                          <div className="text-sm markdown-content">
+                            <ReactMarkdown>{message.content}</ReactMarkdown>
+                          </div>
+                        )}
                       </div>
                       {message.role === "assistant" && (
                         <button
@@ -752,10 +759,10 @@ export function ChatInterface() {
                       </div>
                       <div className="px-4 py-2.5 rounded-lg bg-neutral-100 max-w-[80%]">
                         {streamingContent ? (
-                          <p className="text-sm text-neutral-900 whitespace-pre-wrap">
-                            {streamingContent}
+                          <div className="text-sm text-neutral-900 markdown-content">
+                            <ReactMarkdown>{streamingContent}</ReactMarkdown>
                             <span className="inline-block w-1.5 h-4 bg-neutral-400 ml-0.5 animate-pulse" />
-                          </p>
+                          </div>
                         ) : (
                           <div className="flex items-center gap-1.5">
                             <div className="h-1.5 w-1.5 bg-neutral-400 rounded-full animate-pulse" />
