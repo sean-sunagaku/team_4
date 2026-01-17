@@ -489,8 +489,8 @@ export function ChatInterface() {
     <div className="flex h-screen bg-neutral-50">
       {/* Sidebar */}
       <div
-        className={`bg-white border-r border-neutral-200 flex flex-col transition-all duration-300 ease-in-out ${
-          sidebarOpen ? "w-72" : "w-16"
+        className={`bg-white border-r border-neutral-200 flex flex-col transition-all duration-300 ease-in-out overflow-hidden ${
+          sidebarOpen ? "w-72 min-w-72 max-w-72" : "w-16 min-w-16 max-w-16"
         }`}
       >
         <div
@@ -533,8 +533,8 @@ export function ChatInterface() {
           )}
         </div>
 
-        <ScrollArea className="flex-1">
-          <div className="p-2">
+        <ScrollArea className="flex-1 overflow-hidden">
+          <div className="p-2 overflow-hidden">
             {loadingConversations ? (
               <div
                 className={`text-center text-neutral-400 py-4 text-sm ${!sidebarOpen && "hidden"}`}
@@ -548,7 +548,7 @@ export function ChatInterface() {
                 No conversations
               </div>
             ) : (
-              <div className="space-y-1">
+              <div className="space-y-1 w-full">
                 {conversations.map((conv) => {
                   const isEditing = editingConversationId === conv.id;
                   const isSelected = currentConversation?.id === conv.id;
@@ -556,15 +556,11 @@ export function ChatInterface() {
                   return (
                     <div
                       key={conv.id}
-                      className={`group flex items-center gap-2 px-3 py-2 rounded-md cursor-pointer transition-all duration-200 ${
+                      className={`group flex items-center gap-2 px-3 py-2 rounded-md cursor-pointer transition-all duration-200 overflow-hidden ${
                         isSelected ? "bg-neutral-100" : "hover:bg-neutral-50"
                       } ${!sidebarOpen ? "justify-center px-0" : ""}`}
                       onClick={() => selectConversation(conv)}
-                      title={
-                        !sidebarOpen
-                          ? conv.title || "New conversation"
-                          : undefined
-                      }
+                      title={conv.title || "New conversation"}
                     >
                       <MessageSquare
                         className={`h-4 w-4 text-neutral-400 shrink-0 ${
@@ -615,21 +611,23 @@ export function ChatInterface() {
 
                       {sidebarOpen && !isEditing && (
                         <>
-                          <span className="text-sm text-neutral-700 truncate flex-1 min-w-0">
+                          <span className="text-sm text-neutral-700 truncate flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap block max-w-[160px]">
                             {conv.title || "New conversation"}
                           </span>
-                          <button
-                            onClick={(e) => startEditingTitle(conv, e)}
-                            className="shrink-0 p-1 text-neutral-500 hover:text-neutral-700 hover:bg-neutral-200 rounded opacity-0 group-hover:opacity-100 transition-opacity"
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={(e) => deleteConversation(conv.id, e)}
-                            className="shrink-0 p-1 text-neutral-500 hover:text-red-600 hover:bg-red-50 rounded opacity-0 group-hover:opacity-100 transition-opacity"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
+                          <div className="flex items-center gap-0.5 shrink-0">
+                            <button
+                              onClick={(e) => startEditingTitle(conv, e)}
+                              className="p-1 text-neutral-500 hover:text-neutral-700 hover:bg-neutral-200 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={(e) => deleteConversation(conv.id, e)}
+                              className="p-1 text-neutral-500 hover:text-red-600 hover:bg-red-50 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
                         </>
                       )}
                     </div>
