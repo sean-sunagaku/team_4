@@ -12,7 +12,7 @@
 |------|------|----------|
 | Node.js | プログラムを動かすためのソフト | [nodejs.org](https://nodejs.org/) からダウンロード |
 | Google API キー | 地図機能を使うための鍵 | [Google Cloud Console](https://console.cloud.google.com/) |
-| Anthropic API キー | AI機能を使うための鍵 | [Anthropic Console](https://console.anthropic.com/) |
+| Qwen API キー | AI機能を使うための鍵 | [Alibaba Cloud DashScope](https://dashscope.console.aliyun.com/) |
 
 ### 2. Google API キーの設定（Google Cloud Console で）
 
@@ -37,7 +37,9 @@ cp .env.example .env
 PORT=3000
 NODE_ENV=development
 GOOGLE_API_KEY=あなたのGoogleAPIキー
-ANTHROPIC_API_KEY=あなたのAnthropicAPIキー
+QWEN_API_KEY=あなたのQwenAPIキー
+QWEN_BASE_URL=https://dashscope-intl.aliyuncs.com/compatible-mode/v1
+QWEN_MODEL=qwen-plus
 ```
 
 ---
@@ -84,9 +86,9 @@ npm run dev
 
 ---
 
-### 🔧 Google Maps APIのみテスト（AIなし・推奨）
+### 🔧 Google Maps APIのみテスト（AIなし）
 
-**Anthropic APIのクレジットがなくても使えるテスト**です。
+**Qwen APIキーがなくても使えるテスト**です。
 Google Maps API（Geocoding + Places）だけをテストし、デモ用のルートURLを生成します。
 
 ```bash
@@ -129,10 +131,10 @@ curl -X POST http://localhost:3000/api/v1/routes/test-google \
 
 ---
 
-### 📱 本番用テストコマンド（AI機能込み）
+### 📱 Qwen AI 疎通確認（推奨）
 
-AI（Claude）を使った完全なルート提案をテストします。
-**Anthropic APIのクレジットが必要です。**
+AI（Qwen）を使った完全なルート提案をテストします。
+**Qwen APIキーが必要です。**
 
 ```bash
 curl -X POST http://localhost:3000/api/v1/routes/suggest \
@@ -141,6 +143,14 @@ curl -X POST http://localhost:3000/api/v1/routes/suggest \
 ```
 
 > 💡 このコマンドは「東京駅からバック駐車の練習ルートを提案して」という意味です
+
+#### 🚀 ワンライナー版（コピペ用）
+
+```bash
+curl -s -X POST http://localhost:3000/api/v1/routes/suggest -H "Content-Type: application/json" -d '{"origin": "東京駅", "practiceType": "BACK_PARKING"}' | python3 -m json.tool
+```
+
+> `-s` で進捗表示を消し、`python3 -m json.tool` で結果を見やすく整形
 
 ### 成功した場合のレスポンス例
 
@@ -188,15 +198,17 @@ curl -X POST http://localhost:3000/api/v1/routes/suggest \
 
 ---
 
-### エラー3: Anthropic APIクレジット不足
+### エラー3: Qwen API認証エラー
 
 ```
-"Your credit balance is too low to access the Anthropic API"
+"Invalid API key" または "Authentication failed"
 ```
 
-**原因**: AnthropicのAPIクレジットが不足している
+**原因**: Qwen APIキーが無効または未設定
 
-**対処**: [Anthropic Console](https://console.anthropic.com/) でクレジットを追加
+**対処**:
+1. [DashScope Console](https://dashscope.console.aliyun.com/) でAPIキーを確認
+2. `.env` の `QWEN_API_KEY` が正しく設定されているか確認
 
 ---
 
@@ -241,7 +253,20 @@ curl -X POST http://localhost:3000/api/v1/routes/suggest \
 
 - [ ] `.env` ファイルが存在する
 - [ ] Google API キーが設定されている
-- [ ] Anthropic API キーが設定されている（クレジット残高あり）
+- [ ] Qwen API キーが設定されている
 - [ ] `npm run dev` でサーバーが起動する
 - [ ] curlコマンドでレスポンスが返ってくる
 - [ ] `googleMapsUrl` がブラウザで開ける
+
+---
+
+## クイック疎通確認コマンド
+
+サーバー起動後、別ターミナルで以下を実行：
+
+```bash
+# Qwen AI 疎通確認（ワンライナー）
+curl -s -X POST http://localhost:3000/api/v1/routes/suggest -H "Content-Type: application/json" -d '{"origin": "東京駅", "practiceType": "BACK_PARKING"}' | python3 -m json.tool
+```
+
+成功なら `googleMapsUrl` を含むJSONが返ります。

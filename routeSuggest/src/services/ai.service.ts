@@ -1,8 +1,8 @@
 /**
- * AI Service - Claude API連携による経由地選択
+ * AI Service - Qwen API連携による経由地選択
  */
 
-import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
 import { env } from '../config/env.js';
 import { AppError } from '../errors/AppError.js';
 import { logger } from '../utils/logger.js';
@@ -16,11 +16,11 @@ import {
   PRACTICE_TYPE_DESCRIPTIONS,
 } from '../types/practice.js';
 
-const anthropic = new Anthropic({
-  apiKey: env.ANTHROPIC_API_KEY,
+const openai = new OpenAI({
+  apiKey: env.QWEN_API_KEY,
+  baseURL: env.QWEN_BASE_URL,
 });
 
-const MODEL = 'claude-sonnet-4-20250514';
 const MAX_RETRIES = 2;
 
 interface AISelectionParams {
@@ -44,8 +44,8 @@ export async function selectRouteWithAI(
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
-      const response = await anthropic.messages.create({
-        model: MODEL,
+      const response = await openai.chat.completions.create({
+        model: env.QWEN_MODEL,
         max_tokens: 1024,
         messages: [
           {
@@ -55,12 +55,12 @@ export async function selectRouteWithAI(
         ],
       });
 
-      const textContent = response.content.find((c) => c.type === 'text');
-      if (!textContent || textContent.type !== 'text') {
+      const textContent = response.choices[0]?.message?.content;
+      if (!textContent) {
         throw new Error('No text response from AI');
       }
 
-      const parsed = parseAndValidateResponse(textContent.text, params.candidates);
+      const parsed = parseAndValidateResponse(textContent, params.candidates);
       logger.debug({ parsed }, 'AI route selection successful');
       return parsed;
     } catch (error) {

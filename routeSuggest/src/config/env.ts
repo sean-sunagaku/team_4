@@ -13,7 +13,12 @@ const envSchema = z.object({
     .enum(['development', 'production', 'test'])
     .default('development'),
   GOOGLE_API_KEY: z.string().min(1, 'GOOGLE_API_KEY is required'),
-  ANTHROPIC_API_KEY: z.string().min(1, 'ANTHROPIC_API_KEY is required'),
+  // Anthropic (optional - kept for future reference)
+  ANTHROPIC_API_KEY: z.string().optional(),
+  // Qwen API Configuration
+  QWEN_API_KEY: z.string().min(1, 'QWEN_API_KEY is required'),
+  QWEN_BASE_URL: z.string().url().default('https://dashscope-intl.aliyuncs.com/compatible-mode/v1'),
+  QWEN_MODEL: z.string().default('qwen-plus'),
 });
 
 const parsed = envSchema.safeParse(process.env);
