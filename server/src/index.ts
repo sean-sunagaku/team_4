@@ -3,7 +3,11 @@ import { cors } from "hono/cors";
 import { streamSSE } from "hono/streaming";
 import dotenv from "dotenv";
 import { chatService } from "./services/chat-service.js";
-import { searchWeb, getCurrentDateTime, formatSearchResultsForAI } from "./services/search-service.js";
+import {
+  searchWeb,
+  getCurrentDateTime,
+  formatSearchResultsForAI,
+} from "./services/search-service.js";
 import { ragService } from "./services/rag-service.js";
 import { qwenASRService } from "./services/qwen-asr-service.js";
 import { qwenLLMService } from "./services/qwen-llm-service.js";
@@ -26,7 +30,7 @@ function buildSystemPrompt(): string {
   const now = Date.now();
 
   // Use cached base if within TTL
-  if (cachedSystemPromptBase && (now - lastPromptCacheTime) < PROMPT_CACHE_TTL) {
+  if (cachedSystemPromptBase && now - lastPromptCacheTime < PROMPT_CACHE_TTL) {
     return cachedSystemPromptBase;
   }
 
@@ -78,20 +82,37 @@ function needsWebSearch(content: string): boolean {
   }
 
   const alwaysSearchKeywords = [
-    "ニュース", "最新", "現在の", "今日の", "昨日の", "速報",
-    "調べて", "検索して", "ググって",
-    "天気", "株価", "為替", "相場",
-    "〜とは", "について",
-    "news", "latest", "current", "today",
+    "ニュース",
+    "最新",
+    "現在の",
+    "今日の",
+    "昨日の",
+    "速報",
+    "調べて",
+    "検索して",
+    "ググって",
+    "天気",
+    "株価",
+    "為替",
+    "相場",
+    "〜とは",
+    "について",
+    "news",
+    "latest",
+    "current",
+    "today",
   ];
 
   const lowerContent = content.toLowerCase();
-  if (alwaysSearchKeywords.some(kw => lowerContent.includes(kw.toLowerCase()))) {
+  if (
+    alwaysSearchKeywords.some((kw) => lowerContent.includes(kw.toLowerCase()))
+  ) {
     return true;
   }
 
   const questionIndicators = [
-    /？$/, /\?$/,
+    /？$/,
+    /\?$/,
     /(何|なに|なん)(です|だ|ですか)/,
     /(誰|だれ)(です|だ|ですか)/,
     /(どこ|何処)(です|だ|ですか|に|で)/,
@@ -113,6 +134,66 @@ function needsWebSearch(content: string): boolean {
   return false;
 }
 
+/**
+ * Check if message needs RAG search (car/driving related)
+ */
+function needsRAGSearch(content: string): boolean {
+  const ragKeywords = [
+    // 車関連
+    "車",
+    "運転",
+    "ドライブ",
+    "走行",
+    "駐車",
+    "パーキング",
+    // プリウス固有
+    "プリウス",
+    "prius",
+    "ハイブリッド",
+    "HV",
+    // 操作関連
+    "ブレーキ",
+    "アクセル",
+    "ハンドル",
+    "シフト",
+    "ギア",
+    "エンジン",
+    "始動",
+    "停止",
+    "スタート",
+    "ストップ",
+    // 機能関連
+    "ナビ",
+    "エアコン",
+    "クーラー",
+    "ヒーター",
+    "ライト",
+    "ワイパー",
+    "ドア",
+    "窓",
+    "ミラー",
+    "シート",
+    "トランク",
+    // 警告・トラブル
+    "警告",
+    "エラー",
+    "故障",
+    "異常",
+    "トラブル",
+    "ランプ",
+    "点灯",
+    // 取扱説明書
+    "取扱",
+    "説明書",
+    "マニュアル",
+    "使い方",
+    "操作方法",
+  ];
+
+  const lowerContent = content.toLowerCase();
+  return ragKeywords.some((kw) => lowerContent.includes(kw.toLowerCase()));
+}
+
 const app = new Hono();
 const PORT = process.env.PORT || 3001;
 const CLIENT_URLS = [
@@ -122,11 +203,14 @@ const CLIENT_URLS = [
 ];
 
 // CORS middleware
-app.use("/*", cors({
-  origin: CLIENT_URLS,
-  allowMethods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
-  credentials: true,
-}));
+app.use(
+  "/*",
+  cors({
+    origin: CLIENT_URLS,
+    allowMethods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
+    credentials: true,
+  }),
+);
 
 // Root endpoint
 app.get("/", (c) => {
@@ -140,7 +224,8 @@ app.get("/", (c) => {
 // Get all conversations
 app.get("/api/chat/conversations", async (c) => {
   try {
-    const conversations = await chatService.getUserConversations(ANONYMOUS_USER_ID);
+    const conversations =
+      await chatService.getUserConversations(ANONYMOUS_USER_ID);
     return c.json({ conversations });
   } catch (error) {
     console.error("Error fetching conversations:", error);
@@ -153,7 +238,10 @@ app.post("/api/chat/conversations", async (c) => {
   try {
     const body = await c.req.json();
     const { title } = body;
-    const conversation = await chatService.createConversation(ANONYMOUS_USER_ID, title);
+    const conversation = await chatService.createConversation(
+      ANONYMOUS_USER_ID,
+      title,
+    );
     return c.json({ conversation });
   } catch (error) {
     console.error("Error creating conversation:", error);
@@ -165,7 +253,10 @@ app.post("/api/chat/conversations", async (c) => {
 app.get("/api/chat/conversations/:id", async (c) => {
   try {
     const id = c.req.param("id");
-    const conversation = await chatService.getOrCreateConversation(ANONYMOUS_USER_ID, id);
+    const conversation = await chatService.getOrCreateConversation(
+      ANONYMOUS_USER_ID,
+      id,
+    );
 
     if (!conversation) {
       return c.json({ error: "Conversation not found" }, 404);
@@ -195,7 +286,10 @@ app.post("/api/chat/conversations/:id/messages/stream", async (c) => {
   }
 
   // Verify conversation exists
-  const conversation = await chatService.getOrCreateConversation(ANONYMOUS_USER_ID, id);
+  const conversation = await chatService.getOrCreateConversation(
+    ANONYMOUS_USER_ID,
+    id,
+  );
 
   if (!conversation) {
     return c.json({ error: "Conversation not found" }, 404);
@@ -216,13 +310,13 @@ app.post("/api/chat/conversations/:id/messages/stream", async (c) => {
       const [messages, searchResult] = await Promise.all([
         chatService.getMessages(id),
         shouldSearch
-          ? searchWeb(content).catch(err => {
+          ? searchWeb(content).catch((err) => {
               console.error("Search failed:", err);
               return { success: false, results: [] };
             })
           : Promise.resolve({ success: false, results: [] }),
         // Fire-and-forget: save user message without blocking
-        chatService.addMessage(id, "user", content).catch(err => {
+        chatService.addMessage(id, "user", content).catch((err) => {
           console.error("Failed to save user message:", err);
         }),
       ]);
@@ -247,11 +341,14 @@ app.post("/api/chat/conversations/:id/messages/stream", async (c) => {
       await qwenLLMService.sendMessageStream(aiMessages, {
         onChunk: (chunk: string) => {
           fullContent += chunk;
-          stream.writeSSE({ data: JSON.stringify({ type: "text", content: chunk }) });
+          stream.writeSSE({
+            data: JSON.stringify({ type: "text", content: chunk }),
+          });
         },
       });
 
-      const aiResponse = fullContent || "申し訳ありません、応答を生成できませんでした。";
+      const aiResponse =
+        fullContent || "申し訳ありません、応答を生成できませんでした。";
 
       // OPTIMIZATION: Post-stream operations run in background (non-blocking)
       const postStreamOps = async () => {
@@ -260,9 +357,12 @@ app.post("/api/chat/conversations/:id/messages/stream", async (c) => {
           await chatService.addMessage(id, "assistant", aiResponse);
 
           // Update conversation title if it's the first user message
-          const userMessages = messages.filter((m: { role: string }) => m.role === "user");
+          const userMessages = messages.filter(
+            (m: { role: string }) => m.role === "user",
+          );
           if (userMessages.length === 0) {
-            const title = content.slice(0, 50) + (content.length > 50 ? "..." : "");
+            const title =
+              content.slice(0, 50) + (content.length > 50 ? "..." : "");
             await chatService.updateTitle(id, title);
           }
         } catch (err) {
@@ -283,7 +383,10 @@ app.post("/api/chat/conversations/:id/messages/stream", async (c) => {
     } catch (error) {
       console.error("Error in streaming message:", error);
       await stream.writeSSE({
-        data: JSON.stringify({ type: "error", message: error instanceof Error ? error.message : "Unknown error" }),
+        data: JSON.stringify({
+          type: "error",
+          message: error instanceof Error ? error.message : "Unknown error",
+        }),
       });
     }
   });
@@ -312,7 +415,10 @@ app.patch("/api/chat/conversations/:id/title", async (c) => {
       return c.json({ error: "Title is required" }, 400);
     }
 
-    const conversation = await chatService.getOrCreateConversation(ANONYMOUS_USER_ID, id);
+    const conversation = await chatService.getOrCreateConversation(
+      ANONYMOUS_USER_ID,
+      id,
+    );
 
     if (!conversation) {
       return c.json({ error: "Conversation not found" }, 404);
@@ -405,7 +511,8 @@ app.post("/api/rag/search", async (c) => {
     });
   } catch (error) {
     console.error("Error searching RAG:", error);
-    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown error";
     return c.json({ error: `Failed to search: ${errorMessage}` }, 500);
   }
 });
@@ -435,7 +542,8 @@ app.get("/api/rag/search", async (c) => {
     });
   } catch (error) {
     console.error("Error searching RAG:", error);
-    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown error";
     return c.json({ error: `Failed to search: ${errorMessage}` }, 500);
   }
 });
@@ -467,7 +575,10 @@ app.post("/api/voice/chat", async (c) => {
     try {
       // Step 1: ASR - Convert audio to text
       console.log("Starting ASR transcription...");
-      const asrResult = await qwenASRService.transcribeAudio(audioData, audioFormat);
+      const asrResult = await qwenASRService.transcribeAudio(
+        audioData,
+        audioFormat,
+      );
 
       if (!asrResult.success || !asrResult.text) {
         await stream.writeSSE({
@@ -490,7 +601,8 @@ app.post("/api/voice/chat", async (c) => {
       // Get or create conversation
       let convId = conversationId;
       if (!convId) {
-        const conversation = await chatService.createConversation(ANONYMOUS_USER_ID);
+        const conversation =
+          await chatService.createConversation(ANONYMOUS_USER_ID);
         convId = conversation.id;
         await stream.writeSSE({
           data: JSON.stringify({ type: "conversation", id: convId }),
@@ -503,8 +615,24 @@ app.post("/api/voice/chat", async (c) => {
       });
 
       // Step 2: Build messages for LLM
-      const systemPrompt = buildSystemPrompt();
+      let systemPrompt = buildSystemPrompt();
       const existingMessages = await chatService.getMessages(convId);
+
+      // RAG検索（車関連の質問の場合）
+      if (needsRAGSearch(userText)) {
+        console.log("RAG search needed for:", userText);
+        try {
+          const ragResults = await ragService.search(userText, { topK: 3 });
+          if (ragResults.length > 0) {
+            const ragContext = ragService.formatResultsForAI(ragResults);
+            systemPrompt += `\n\n## プリウス取扱説明書からの参考情報\n以下の情報を参考にして回答してください：\n${ragContext}`;
+            console.log("RAG results added to context");
+          }
+        } catch (err) {
+          console.error("RAG search failed:", err);
+        }
+      }
+
       const aiMessages = [
         { role: "system" as const, content: systemPrompt },
         ...chatService.formatMessagesForAI(existingMessages),
@@ -516,16 +644,31 @@ app.post("/api/voice/chat", async (c) => {
       let fullContent = "";
       let sentenceBuffer = "";
       let audioIndex = 0;
-      const pendingTTS: Promise<void>[] = [];
+
+      // Phase 1 & 2: TTS Queue for sequential processing + first sentence prefetch
+      const ttsQueue: { sentence: string; index: number }[] = [];
+      let isProcessingTTS = false;
+      let firstSentenceSent = false;
+      let ttsCompleteResolve: () => void;
+      const ttsCompletePromise = new Promise<void>((resolve) => {
+        ttsCompleteResolve = resolve;
+      });
+      let llmComplete = false;
 
       // Sentence boundary patterns
       const sentenceEndPattern = /[。！？\n]/;
 
       // Emoji pattern for filtering
-      const emojiPattern = /[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[\u{1F600}-\u{1F64F}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]/gu;
+      const emojiPattern =
+        /[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[\u{1F600}-\u{1F64F}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]/gu;
 
       // Helper to get text without emojis
-      const getTextOnly = (text: string) => text.replace(emojiPattern, '').trim();
+      const getTextOnly = (text: string) =>
+        text.replace(emojiPattern, "").trim();
+
+      // Helper for delay (rate limit avoidance)
+      const sleep = (ms: number) =>
+        new Promise((resolve) => setTimeout(resolve, ms));
 
       // Function to send a sentence to TTS
       const sendToTTS = async (sentence: string, index: number) => {
@@ -539,10 +682,34 @@ app.post("/api/voice/chat", async (c) => {
             data: JSON.stringify({
               type: "audio",
               url: ttsResult.audioUrl,
-              index: index
+              index: index,
             }),
           });
           console.log(`TTS[${index}] completed`);
+        } else {
+          console.error(`TTS[${index}] failed:`, ttsResult.error);
+        }
+      };
+
+      // Phase 1: Sequential TTS queue processor (avoids 429 rate limit errors)
+      const processTTSQueue = async () => {
+        if (isProcessingTTS) return;
+        isProcessingTTS = true;
+
+        while (ttsQueue.length > 0) {
+          const item = ttsQueue.shift()!;
+          await sendToTTS(item.sentence, item.index);
+          // Small delay between TTS calls to avoid rate limiting
+          if (ttsQueue.length > 0) {
+            await sleep(100);
+          }
+        }
+
+        isProcessingTTS = false;
+
+        // Check if we're done (LLM complete and queue empty)
+        if (llmComplete && ttsQueue.length === 0) {
+          ttsCompleteResolve();
         }
       };
 
@@ -566,7 +733,22 @@ app.post("/api/voice/chat", async (c) => {
               // Only send to TTS if sentence has actual text content (not just emojis)
               if (getTextOnly(sentence)) {
                 const currentIndex = audioIndex++;
-                pendingTTS.push(sendToTTS(sentence, currentIndex));
+
+                // Phase 2: First sentence prefetch - send immediately (bypass queue)
+                if (!firstSentenceSent) {
+                  firstSentenceSent = true;
+                  console.log("First sentence detected - sending to TTS immediately");
+                  // Fire and continue - don't await to minimize TTFA
+                  sendToTTS(sentence, currentIndex).then(() => {
+                    // After first sentence completes, start processing queue
+                    processTTSQueue();
+                  });
+                } else {
+                  // Subsequent sentences go to queue for sequential processing
+                  ttsQueue.push({ sentence, index: currentIndex });
+                  // Start queue processing if not already running
+                  processTTSQueue();
+                }
               }
             }
           }
@@ -576,10 +758,25 @@ app.post("/api/voice/chat", async (c) => {
       // Send any remaining text to TTS
       if (getTextOnly(sentenceBuffer)) {
         const currentIndex = audioIndex++;
-        pendingTTS.push(sendToTTS(sentenceBuffer, currentIndex));
+        if (!firstSentenceSent) {
+          firstSentenceSent = true;
+          await sendToTTS(sentenceBuffer, currentIndex);
+        } else {
+          ttsQueue.push({ sentence: sentenceBuffer, index: currentIndex });
+          processTTSQueue();
+        }
       }
 
-      const aiResponse = fullContent || "申し訳ありません、応答を生成できませんでした。";
+      // Mark LLM as complete
+      llmComplete = true;
+
+      // If no TTS was needed or queue is empty, resolve immediately
+      if (!firstSentenceSent || (ttsQueue.length === 0 && !isProcessingTTS)) {
+        ttsCompleteResolve();
+      }
+
+      const aiResponse =
+        fullContent || "申し訳ありません、応答を生成できませんでした。";
       console.log("LLM generation completed");
 
       // Save AI response (fire-and-forget)
@@ -588,16 +785,19 @@ app.post("/api/voice/chat", async (c) => {
       });
 
       // Update conversation title if first message
-      const userMessages = existingMessages.filter((m: { role: string }) => m.role === "user");
+      const userMessages = existingMessages.filter(
+        (m: { role: string }) => m.role === "user",
+      );
       if (userMessages.length === 0) {
-        const title = userText.slice(0, 50) + (userText.length > 50 ? "..." : "");
+        const title =
+          userText.slice(0, 50) + (userText.length > 50 ? "..." : "");
         chatService.updateTitle(convId, title).catch((err) => {
           console.error("Failed to update title:", err);
         });
       }
 
-      // Wait for all TTS to complete
-      await Promise.all(pendingTTS);
+      // Wait for all TTS to complete (sequential queue)
+      await ttsCompletePromise;
 
       // Send completion
       await stream.writeSSE({
@@ -632,7 +832,10 @@ app.post("/api/voice/transcribe", async (c) => {
       return c.json({ error: "Audio data is required" }, 400);
     }
 
-    const result = await qwenASRService.transcribeAudio(audioData, audioFormat || "webm");
+    const result = await qwenASRService.transcribeAudio(
+      audioData,
+      audioFormat || "webm",
+    );
 
     if (!result.success) {
       return c.json({ error: result.error }, 500);
