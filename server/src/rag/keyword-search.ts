@@ -1,4 +1,4 @@
-import { toBigrams } from './text-preprocessor';
+import { toBigrams } from './text-preprocessor.js';
 
 /**
  * BM25キーワード検索モジュール

@@ -1,15 +1,20 @@
-import * as dotenv from 'dotenv';
 import OpenAI from 'openai';
+import { ragConfig } from '../config/rag.config.js';
 
-dotenv.config();
+let openaiClient: OpenAI | null = null;
 
-const openai = new OpenAI({
-  apiKey: process.env.DASHSCOPE_API_KEY,
-  baseURL: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
-});
-
-const EMBEDDING_MODEL = 'text-embedding-v4';
-const EMBEDDING_DIMENSIONS = 1024;
+/**
+ * Get OpenAI client instance (lazy initialization)
+ */
+function getOpenAIClient(): OpenAI {
+  if (!openaiClient) {
+    openaiClient = new OpenAI({
+      apiKey: ragConfig.dashscope.apiKey,
+      baseURL: ragConfig.dashscope.baseURL,
+    });
+  }
+  return openaiClient;
+}
 
 /**
  * テキストのEmbeddingを生成する
@@ -27,7 +32,7 @@ export async function getEmbedding(text: string): Promise<number[]> {
  * @returns Embeddingベクトル配列
  */
 export async function getEmbeddings(texts: string[]): Promise<number[][]> {
-  if (!process.env.DASHSCOPE_API_KEY) {
+  if (!ragConfig.dashscope.apiKey) {
     throw new Error(
       'DASHSCOPE_API_KEY is not set. Please set it in .env file.'
     );
@@ -37,8 +42,7 @@ export async function getEmbeddings(texts: string[]): Promise<number[][]> {
     return [];
   }
 
-  // APIの制限に合わせてバッチ処理（最大10テキストまで）
-  const BATCH_SIZE = 10;
+  const BATCH_SIZE = ragConfig.embedding.batchSize;
   const allEmbeddings: number[][] = [];
 
   for (let i = 0; i < texts.length; i += BATCH_SIZE) {
@@ -54,10 +58,12 @@ export async function getEmbeddings(texts: string[]): Promise<number[][]> {
 }
 
 async function fetchEmbeddings(texts: string[]): Promise<number[][]> {
+  const openai = getOpenAIClient();
+
   const response = await openai.embeddings.create({
-    model: EMBEDDING_MODEL,
+    model: ragConfig.embedding.model,
     input: texts,
-    dimensions: EMBEDDING_DIMENSIONS,
+    dimensions: ragConfig.embedding.dimensions,
   });
 
   // レスポンスをインデックス順にソートして返す
@@ -69,5 +75,5 @@ async function fetchEmbeddings(texts: string[]): Promise<number[][]> {
  * Embedding次元数を取得する（ChromaDB設定用）
  */
 export function getEmbeddingDimension(): number {
-  return EMBEDDING_DIMENSIONS;
+  return ragConfig.embedding.dimensions;
 }

@@ -14,5 +14,17 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: team4_chromadb
+    restart: always
+    ports:
+      - "8100:8000"
+    volumes:
+      - chroma_data:/chroma/chroma
+    environment:
+      - ANONYMIZED_TELEMETRY=false
+
 volumes:
   postgres_data:
+  chroma_data:

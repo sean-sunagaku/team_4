@@ -1,9 +1,5 @@
 import { ChromaClient, Collection } from 'chromadb';
-
-const COLLECTION_NAME = 'car_manual';
-
-// ChromaDBサーバーのURL（デフォルト: localhost:8000）
-const CHROMA_URL = process.env.CHROMA_URL || 'http://localhost:8000';
+import { ragConfig } from '../config/rag.config.js';
 
 let client: ChromaClient | null = null;
 let collection: Collection | null = null;
@@ -11,12 +7,11 @@ let collection: Collection | null = null;
 /**
  * ChromaDBクライアントを初期化する
  * 注意: ChromaDBサーバーが起動している必要があります
- * 起動方法: docker run -p 8000:8000 chromadb/chroma
  */
 export async function initChromaClient(): Promise<ChromaClient> {
   if (!client) {
     client = new ChromaClient({
-      path: CHROMA_URL,
+      path: ragConfig.chromadb.url,
     });
   }
   return client;
@@ -33,7 +28,7 @@ export async function getOrCreateCollection(): Promise<Collection> {
   const chromaClient = await initChromaClient();
 
   collection = await chromaClient.getOrCreateCollection({
-    name: COLLECTION_NAME,
+    name: ragConfig.chromadb.collectionName,
     metadata: {
       description: 'Car instruction manual chunks',
     },
@@ -49,7 +44,7 @@ export async function resetCollection(): Promise<Collection> {
   const chromaClient = await initChromaClient();
 
   try {
-    await chromaClient.deleteCollection({ name: COLLECTION_NAME });
+    await chromaClient.deleteCollection({ name: ragConfig.chromadb.collectionName });
   } catch {
     // コレクションが存在しない場合は無視
   }
