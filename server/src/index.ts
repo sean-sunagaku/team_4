@@ -662,9 +662,33 @@ app.post("/api/voice/chat", async (c) => {
       const emojiPattern =
         /[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[\u{1F600}-\u{1F64F}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]/gu;
 
-      // Helper to get text without emojis
-      const getTextOnly = (text: string) =>
-        text.replace(emojiPattern, "").trim();
+      // Helper to convert markdown to plain text for TTS
+      const getTextOnly = (text: string) => {
+        let result = text
+          // Remove emojis
+          .replace(emojiPattern, "")
+          // Remove horizontal rules (---, ***, ___)
+          .replace(/^[-*_]{3,}\s*$/gm, "")
+          // Remove headers (###, ##, #)
+          .replace(/^#{1,6}\s+/gm, "")
+          // Remove bold/italic markers (**text**, *text*, __text__, _text_)
+          .replace(/\*\*([^*]+)\*\*/g, "$1")
+          .replace(/\*([^*]+)\*/g, "$1")
+          .replace(/__([^_]+)__/g, "$1")
+          .replace(/_([^_]+)_/g, "$1")
+          // Remove blockquotes (> text)
+          .replace(/^>\s*/gm, "")
+          // Remove inline code (`code`)
+          .replace(/`([^`]+)`/g, "$1")
+          // Remove links [text](url) -> text
+          .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+          // Remove bullet list markers (-, *, +) but keep numbered lists (1., 2., etc.)
+          .replace(/^[\s]*[-*+]\s+/gm, "")
+          // Remove extra whitespace
+          .replace(/\s+/g, " ")
+          .trim();
+        return result;
+      };
 
       // Helper for delay (rate limit avoidance)
       const sleep = (ms: number) =>
