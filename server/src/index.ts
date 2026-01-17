@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { streamSSE } from "hono/streaming";
+import { zValidator } from "@hono/zod-validator";
 import dotenv from "dotenv";
 import { chatService } from "./services/chat-service.js";
 import {
@@ -14,6 +15,8 @@ import { qwenLLMService } from "./services/qwen-llm-service.js";
 import { qwenTTSService } from "./services/qwen-tts-service.js";
 import { qwenRealtimeService } from "./services/qwen-realtime-service.js";
 import WebSocket from "ws";
+import { routeService } from "./services/route-service.js";
+import { RouteSuggestRequestSchema, type RouteSuggestRequest } from "./types/route.types.js";
 
 dotenv.config();
 
@@ -964,6 +967,48 @@ function checkWakeWord(text: string): boolean {
     normalized.includes(pattern.toLowerCase())
   );
 }
+
+// ============================================
+// Route Suggestion API Endpoints
+// ============================================
+
+// Get route suggestion health status
+app.get("/api/route/health", (c) => {
+  return c.json({
+    success: true,
+    data: {
+      status: "ok",
+      timestamp: new Date().toISOString(),
+    },
+  });
+});
+
+// Suggest a driving practice route
+app.post("/api/route/suggest", zValidator("json", RouteSuggestRequestSchema), async (c) => {
+  try {
+    const body = c.req.valid("json") as RouteSuggestRequest;
+    const suggestion = await routeService.suggestRoute(body);
+    return c.json({ success: true, data: suggestion });
+  } catch (error) {
+    console.error("Error suggesting route:", error);
+    const message = error instanceof Error ? error.message : "Failed to suggest route";
+    const status = (error as any).statusCode || 500;
+    return c.json({ success: false, error: message }, status);
+  }
+});
+
+// Test Google APIs connectivity (for debugging)
+app.post("/api/route/test", zValidator("json", RouteSuggestRequestSchema), async (c) => {
+  try {
+    const body = c.req.valid("json") as RouteSuggestRequest;
+    const result = await routeService.testGoogleApis(body);
+    return c.json({ success: true, data: result });
+  } catch (error) {
+    console.error("Error testing Google APIs:", error);
+    const message = error instanceof Error ? error.message : "Failed to test APIs";
+    return c.json({ success: false, error: message }, 500);
+  }
+});
 
 // Start server with Bun.serve() for WebSocket support
 const server = Bun.serve({

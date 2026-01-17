@@ -2,25 +2,25 @@
  * Places Service - Google Places API (New) による周辺施設検索
  */
 
-import { env } from '../config/env.js';
-import { AppError } from '../errors/AppError.js';
-import { logger } from '../utils/logger.js';
-import type { SearchConfig } from '../config/searchAssets.js';
-import type {
-  Coordinates,
-  POICandidate,
-  PlacesSearchResponse,
-  PlacesNearbyRequest,
-} from '../types/index.js';
+import type { SearchConfig } from "../config/route-search.config.js";
+import {
+  RouteError,
+  type Coordinates,
+  type POICandidate,
+  type PlacesSearchResponse,
+  type PlacesNearbyRequest,
+} from "../types/route.types.js";
 
-const PLACES_API_URL =
-  'https://places.googleapis.com/v1/places:searchNearby';
+const PLACES_API_URL = "https://places.googleapis.com/v1/places:searchNearby";
 
 export async function searchNearbyPlaces(
   location: Coordinates,
   config: SearchConfig
 ): Promise<POICandidate[]> {
-  logger.debug({ location, config }, 'Searching nearby places');
+  const apiKey = process.env.GOOGLE_API_KEY;
+  if (!apiKey) {
+    throw RouteError.internal("GOOGLE_API_KEY is not set");
+  }
 
   const requestBody: PlacesNearbyRequest = {
     includedTypes: config.includedTypes,
@@ -38,19 +38,19 @@ export async function searchNearbyPlaces(
   };
 
   const response = await fetch(PLACES_API_URL, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'Content-Type': 'application/json',
-      'X-Goog-Api-Key': env.GOOGLE_API_KEY,
-      'X-Goog-FieldMask':
-        'places.id,places.displayName,places.formattedAddress,places.location,places.types,places.rating,places.userRatingCount',
+      "Content-Type": "application/json",
+      "X-Goog-Api-Key": apiKey,
+      "X-Goog-FieldMask":
+        "places.id,places.displayName,places.formattedAddress,places.location,places.types,places.rating,places.userRatingCount",
     },
     body: JSON.stringify(requestBody),
   });
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw AppError.placesApi(
+    throw RouteError.placesApi(
       `Places API request failed: ${response.status}`,
       { status: response.status, error: errorText }
     );
@@ -59,14 +59,14 @@ export async function searchNearbyPlaces(
   const data = (await response.json()) as PlacesSearchResponse;
 
   if (!data.places || data.places.length === 0) {
-    logger.warn({ location }, 'No places found nearby');
+    console.log("No places found nearby:", location);
     return [];
   }
 
   const candidates: POICandidate[] = data.places.map((place) => ({
     id: place.id,
-    name: place.displayName?.text ?? '名称不明',
-    address: place.formattedAddress ?? '住所不明',
+    name: place.displayName?.text ?? "名称不明",
+    address: place.formattedAddress ?? "住所不明",
     location: {
       lat: place.location?.latitude ?? 0,
       lng: place.location?.longitude ?? 0,
@@ -75,8 +75,6 @@ export async function searchNearbyPlaces(
     rating: place.rating,
     userRatingsTotal: place.userRatingCount,
   }));
-
-  logger.debug({ count: candidates.length }, 'Places search successful');
 
   return candidates;
 }
