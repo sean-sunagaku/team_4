@@ -1,4 +1,5 @@
-import { preprocessText } from './text-preprocessor';
+import { preprocessText } from './text-preprocessor.js';
+import { ragConfig } from '../config/rag.config.js';
 
 export interface SplitOptions {
   chunkSize: number;
@@ -16,11 +17,16 @@ export interface TextChunk {
   };
 }
 
-const DEFAULT_OPTIONS: SplitOptions = {
-  chunkSize: 300,      // 500 → 300に変更
-  chunkOverlap: 100,   // 50 → 100に変更
-  usePreprocessing: true,
-};
+/**
+ * Get default split options from config
+ */
+function getDefaultOptions(): SplitOptions {
+  return {
+    chunkSize: ragConfig.textSplitter.chunkSize,
+    chunkOverlap: ragConfig.textSplitter.chunkOverlap,
+    usePreprocessing: ragConfig.textSplitter.usePreprocessing,
+  };
+}
 
 /**
  * テキストを適切なサイズのチャンクに分割する
@@ -33,7 +39,7 @@ export function splitText(
   options: Partial<SplitOptions> = {}
 ): TextChunk[] {
   const { chunkSize, chunkOverlap, usePreprocessing } = {
-    ...DEFAULT_OPTIONS,
+    ...getDefaultOptions(),
     ...options,
   };
   const chunks: TextChunk[] = [];
