@@ -18,6 +18,9 @@ import {
   Menu,
   Volume2,
   VolumeX,
+  Mic,
+  MicOff,
+  Loader2,
 } from "lucide-react";
 
 interface Message {
@@ -39,20 +42,32 @@ interface Conversation {
 
 export function ChatInterface() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [currentConversation, setCurrentConversation] = useState<Conversation | null>(null);
+  const [currentConversation, setCurrentConversation] =
+    useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [loadingConversations, setLoadingConversations] = useState(true);
   const [streamingContent, setStreamingContent] = useState("");
-  const [editingConversationId, setEditingConversationId] = useState<string | null>(null);
+  const [editingConversationId, setEditingConversationId] = useState<
+    string | null
+  >(null);
   const [editingTitle, setEditingTitle] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
+  const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(
+    null,
+  );
   const [autoSpeak, setAutoSpeak] = useState(true);
   const autoSpeakRef = useRef(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Voice recording state
+  const [isRecording, setIsRecording] = useState(false);
+  const [isProcessingVoice, setIsProcessingVoice] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
 
   // Keep ref in sync with state
   useEffect(() => {
@@ -77,7 +92,7 @@ export function ChatInterface() {
 
     // Find Japanese voice if available
     const voices = window.speechSynthesis.getVoices();
-    const japaneseVoice = voices.find(voice => voice.lang.includes("ja"));
+    const japaneseVoice = voices.find((voice) => voice.lang.includes("ja"));
     if (japaneseVoice) {
       utterance.voice = japaneseVoice;
     }
@@ -92,6 +107,201 @@ export function ChatInterface() {
   const stopSpeaking = () => {
     window.speechSynthesis.cancel();
     setSpeakingMessageId(null);
+  };
+
+  // Audio queue for streaming TTS
+  const audioQueueRef = useRef<{ url: string; index: number }[]>([]);
+  const isPlayingRef = useRef(false);
+  const nextExpectedIndexRef = useRef(0);
+
+  // Play next audio in queue
+  const playNextInQueue = () => {
+    if (isPlayingRef.current) return;
+
+    // Sort queue by index and find next expected audio
+    audioQueueRef.current.sort((a, b) => a.index - b.index);
+
+    const nextAudio = audioQueueRef.current.find(
+      (item) => item.index === nextExpectedIndexRef.current,
+    );
+
+    if (nextAudio) {
+      isPlayingRef.current = true;
+      audioQueueRef.current = audioQueueRef.current.filter(
+        (item) => item.index !== nextAudio.index,
+      );
+
+      const audio = new Audio(nextAudio.url);
+      audioPlayerRef.current = audio;
+
+      audio.onended = () => {
+        isPlayingRef.current = false;
+        nextExpectedIndexRef.current++;
+        playNextInQueue(); // Play next
+      };
+
+      audio.onerror = () => {
+        isPlayingRef.current = false;
+        nextExpectedIndexRef.current++;
+        playNextInQueue(); // Skip and play next
+      };
+
+      audio.play().catch((err) => {
+        console.error("Failed to play audio:", err);
+        isPlayingRef.current = false;
+        nextExpectedIndexRef.current++;
+        playNextInQueue();
+      });
+    }
+  };
+
+  // Add audio to queue and start playing
+  const queueAudio = (url: string, index: number) => {
+    audioQueueRef.current.push({ url, index });
+    playNextInQueue();
+  };
+
+  // Reset audio queue
+  const resetAudioQueue = () => {
+    audioQueueRef.current = [];
+    nextExpectedIndexRef.current = 0;
+    isPlayingRef.current = false;
+    if (audioPlayerRef.current) {
+      audioPlayerRef.current.pause();
+      audioPlayerRef.current = null;
+    }
+  };
+
+  // Start voice recording
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream, {
+        mimeType: "audio/webm;codecs=opus",
+      });
+
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = async () => {
+        // Stop all tracks
+        stream.getTracks().forEach((track) => track.stop());
+
+        // Process the recorded audio
+        const audioBlob = new Blob(audioChunksRef.current, {
+          type: "audio/webm",
+        });
+        await sendVoiceMessage(audioBlob);
+      };
+
+      mediaRecorderRef.current = mediaRecorder;
+      mediaRecorder.start();
+      setIsRecording(true);
+    } catch (error) {
+      console.error("Failed to start recording:", error);
+      alert(
+        "マイクへのアクセスが許可されていません。ブラウザの設定を確認してください。",
+      );
+    }
+  };
+
+  // Stop voice recording
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+    }
+  };
+
+  // Convert blob to base64
+  const blobToBase64 = (blob: Blob): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64 = reader.result as string;
+        // Remove data URL prefix to get just the base64 data
+        const base64Data = base64.split(",")[1];
+        resolve(base64Data);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  };
+
+  // Send voice message
+  const sendVoiceMessage = async (audioBlob: Blob) => {
+    setIsProcessingVoice(true);
+    setLoading(true);
+    setStreamingContent("");
+
+    // Reset audio queue for new response
+    resetAudioQueue();
+
+    try {
+      const audioData = await blobToBase64(audioBlob);
+      let convId = currentConversation?.id;
+
+      await chatApi.sendVoiceMessage(audioData, "webm", convId, {
+        onTranscription: (text) => {
+          // Add user message to UI
+          const userMessage: Message = {
+            id: Date.now().toString(),
+            conversationId: convId || "temp",
+            role: "user",
+            content: text,
+            createdAt: new Date(),
+          };
+          setMessages((prev) => [...prev, userMessage]);
+        },
+        onConversationCreated: (id) => {
+          convId = id;
+          chatApi.getConversation(id).then((conv) => {
+            setCurrentConversation(conv);
+            setConversations((prev) => [conv, ...prev]);
+          });
+        },
+        onChunk: (chunk) => {
+          setStreamingContent((prev) => prev + chunk);
+        },
+        onAudio: (url, index) => {
+          // Streaming TTS: queue audio chunks and play in order
+          console.log(`Qwen TTS audio[${index}]:`, url);
+          if (autoSpeakRef.current) {
+            queueAudio(url, index ?? 0);
+          }
+        },
+        onDone: (content, responseConvId) => {
+          const newMessageId = Date.now().toString();
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: newMessageId,
+              conversationId: responseConvId,
+              role: "assistant",
+              content: content,
+              createdAt: new Date(),
+            },
+          ]);
+          setStreamingContent("");
+          loadConversations();
+        },
+        onError: (error) => {
+          console.error("Voice chat error:", error);
+          alert(`音声チャットエラー: ${error}`);
+        },
+      });
+    } catch (error) {
+      console.error("Failed to send voice message:", error);
+      alert("音声メッセージの送信に失敗しました。");
+    } finally {
+      setIsProcessingVoice(false);
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -183,11 +393,14 @@ export function ChatInterface() {
       await chatApi.updateTitle(id, editingTitle.trim());
       setConversations(
         conversations.map((c) =>
-          c.id === id ? { ...c, title: editingTitle.trim() } : c
-        )
+          c.id === id ? { ...c, title: editingTitle.trim() } : c,
+        ),
       );
       if (currentConversation?.id === id) {
-        setCurrentConversation({ ...currentConversation, title: editingTitle.trim() });
+        setCurrentConversation({
+          ...currentConversation,
+          title: editingTitle.trim(),
+        });
       }
       setEditingConversationId(null);
       setEditingTitle("");
@@ -255,7 +468,7 @@ export function ChatInterface() {
         },
         (error) => {
           console.error("Streaming error:", error);
-        }
+        },
       );
     } catch (error) {
       console.error("Failed to send message:", error);
@@ -279,13 +492,17 @@ export function ChatInterface() {
           sidebarOpen ? "w-72" : "w-16"
         }`}
       >
-        <div className={`p-4 border-b border-neutral-200 ${!sidebarOpen && "p-2"}`}>
+        <div
+          className={`p-4 border-b border-neutral-200 ${!sidebarOpen && "p-2"}`}
+        >
           {sidebarOpen ? (
             <>
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
                   <Bot className="h-5 w-5 text-neutral-700" />
-                  <span className="font-semibold text-neutral-900 whitespace-nowrap">AI Chat</span>
+                  <span className="font-semibold text-neutral-900 whitespace-nowrap">
+                    AI Chat
+                  </span>
                 </div>
                 <button
                   onClick={() => setSidebarOpen(false)}
@@ -318,11 +535,15 @@ export function ChatInterface() {
         <ScrollArea className="flex-1">
           <div className="p-2">
             {loadingConversations ? (
-              <div className={`text-center text-neutral-400 py-4 text-sm ${!sidebarOpen && "hidden"}`}>
+              <div
+                className={`text-center text-neutral-400 py-4 text-sm ${!sidebarOpen && "hidden"}`}
+              >
                 Loading...
               </div>
             ) : conversations.length === 0 ? (
-              <div className={`text-center text-neutral-400 py-4 text-sm ${!sidebarOpen && "hidden"}`}>
+              <div
+                className={`text-center text-neutral-400 py-4 text-sm ${!sidebarOpen && "hidden"}`}
+              >
                 No conversations
               </div>
             ) : (
@@ -338,23 +559,39 @@ export function ChatInterface() {
                         isSelected ? "bg-neutral-100" : "hover:bg-neutral-50"
                       } ${!sidebarOpen ? "justify-center px-0" : ""}`}
                       onClick={() => selectConversation(conv)}
-                      title={!sidebarOpen ? (conv.title || "New conversation") : undefined}
+                      title={
+                        !sidebarOpen
+                          ? conv.title || "New conversation"
+                          : undefined
+                      }
                     >
-                      <MessageSquare className={`h-4 w-4 text-neutral-400 shrink-0 ${
-                        !sidebarOpen && isSelected ? "scale-110 text-neutral-600" : ""
-                      }`} />
+                      <MessageSquare
+                        className={`h-4 w-4 text-neutral-400 shrink-0 ${
+                          !sidebarOpen && isSelected
+                            ? "scale-110 text-neutral-600"
+                            : ""
+                        }`}
+                      />
 
                       {sidebarOpen && isEditing && (
-                        <div className="flex items-center gap-1 flex-1 min-w-0" onClick={(e) => e.stopPropagation()}>
+                        <div
+                          className="flex items-center gap-1 flex-1 min-w-0"
+                          onClick={(e) => e.stopPropagation()}
+                        >
                           <input
                             type="text"
                             value={editingTitle}
                             onChange={(e) => setEditingTitle(e.target.value)}
                             onKeyDown={(e) => {
                               if (e.key === "Enter") {
-                                saveConversationTitle(conv.id, e as unknown as React.MouseEvent);
+                                saveConversationTitle(
+                                  conv.id,
+                                  e as unknown as React.MouseEvent,
+                                );
                               } else if (e.key === "Escape") {
-                                cancelEditingTitle(e as unknown as React.MouseEvent);
+                                cancelEditingTitle(
+                                  e as unknown as React.MouseEvent,
+                                );
                               }
                             }}
                             className="flex-1 min-w-0 text-sm bg-white border border-neutral-300 rounded px-1.5 py-0.5 text-neutral-900 focus:outline-none focus:border-neutral-500"
@@ -430,7 +667,11 @@ export function ChatInterface() {
             }`}
             title={autoSpeak ? "Auto-read ON" : "Auto-read OFF"}
           >
-            {autoSpeak ? <Volume2 className="h-3.5 w-3.5" /> : <VolumeX className="h-3.5 w-3.5" />}
+            {autoSpeak ? (
+              <Volume2 className="h-3.5 w-3.5" />
+            ) : (
+              <VolumeX className="h-3.5 w-3.5" />
+            )}
             <span>{autoSpeak ? "Auto" : "Off"}</span>
           </button>
         </div>
@@ -456,7 +697,9 @@ export function ChatInterface() {
                   <div key={message.id} className="space-y-2">
                     <div
                       className={`flex gap-3 ${
-                        message.role === "user" ? "justify-end" : "justify-start"
+                        message.role === "user"
+                          ? "justify-end"
+                          : "justify-start"
                       }`}
                     >
                       {message.role === "assistant" && (
@@ -483,7 +726,11 @@ export function ChatInterface() {
                               ? "bg-neutral-200 text-neutral-700"
                               : "text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100"
                           }`}
-                          title={speakingMessageId === message.id ? "Stop" : "Read aloud"}
+                          title={
+                            speakingMessageId === message.id
+                              ? "Stop"
+                              : "Read aloud"
+                          }
                         >
                           {speakingMessageId === message.id ? (
                             <VolumeX className="h-4 w-4" />
@@ -527,26 +774,66 @@ export function ChatInterface() {
           </div>
         </ScrollArea>
 
-        {/* Input */}
-        <div className="border-t border-neutral-200 p-4">
+        {/* Voice Input (Default) */}
+        <div className="border-t border-neutral-200 p-6">
           <div className="max-w-3xl mx-auto">
-            <div className="flex gap-2">
-              <Input
-                ref={inputRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Send a message..."
-                disabled={loading}
-                className="flex-1 bg-neutral-50 border-neutral-200 text-neutral-900 placeholder:text-neutral-400 focus:border-neutral-400 focus:ring-0"
-              />
-              <Button
-                onClick={sendMessage}
-                disabled={loading || !input.trim()}
-                className="bg-neutral-900 hover:bg-neutral-800 text-white px-4 disabled:opacity-40"
+            {/* Main Voice Button */}
+            <div className="flex flex-col items-center gap-4">
+              <button
+                onClick={isRecording ? stopRecording : startRecording}
+                disabled={loading && !isRecording}
+                className={`w-20 h-20 rounded-full flex items-center justify-center transition-all shadow-lg ${
+                  isRecording
+                    ? "bg-red-500 hover:bg-red-600 text-white scale-110 animate-pulse"
+                    : isProcessingVoice
+                      ? "bg-neutral-300 text-neutral-500"
+                      : "bg-neutral-900 hover:bg-neutral-800 text-white hover:scale-105"
+                }`}
+                title={isRecording ? "録音停止" : "タップして話す"}
               >
-                <Send className="h-4 w-4" />
-              </Button>
+                {isProcessingVoice ? (
+                  <Loader2 className="h-8 w-8 animate-spin" />
+                ) : isRecording ? (
+                  <MicOff className="h-8 w-8" />
+                ) : (
+                  <Mic className="h-8 w-8" />
+                )}
+              </button>
+
+              {/* Status Text */}
+              <div className="text-sm text-neutral-500 h-6">
+                {isRecording ? (
+                  <span className="flex items-center gap-2 text-red-500">
+                    <span className="h-2 w-2 bg-red-500 rounded-full animate-pulse" />
+                    録音中... タップして停止
+                  </span>
+                ) : isProcessingVoice ? (
+                  <span>処理中...</span>
+                ) : (
+                  <span>タップして話す</span>
+                )}
+              </div>
+
+              {/* Text Input (Secondary) */}
+              <div className="w-full flex gap-2 mt-2">
+                <Input
+                  ref={inputRef}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder="または、テキストを入力..."
+                  disabled={loading || isRecording}
+                  className="flex-1 bg-neutral-50 border-neutral-200 text-neutral-900 placeholder:text-neutral-400 focus:border-neutral-400 focus:ring-0 text-sm"
+                />
+                <Button
+                  onClick={sendMessage}
+                  disabled={loading || !input.trim() || isRecording}
+                  className="bg-neutral-900 hover:bg-neutral-800 text-white px-3 disabled:opacity-40"
+                  size="sm"
+                >
+                  <Send className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           </div>
         </div>
