@@ -25,6 +25,23 @@ services:
     environment:
       - ANONYMIZED_TELEMETRY=false
 
+  speed-detector:
+    build:
+      context: ./python-container
+      dockerfile: Dockerfile
+    container_name: team4_speed_detector
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+    volumes:
+      - ./python-container/src:/app/src
+      - ./python-container/sample_movie.mp4:/app/uploads/sample_movie.mp4:ro
+      - ./python-container/yolov8n.pt:/app/yolov8n.pt:ro
+    environment:
+      - PYTHONUNBUFFERED=1
+      - YOLO_MODEL=/app/yolov8n.pt
+    command: ["uvicorn", "speed_detector.api.simple:app", "--host", "0.0.0.0", "--port", "9000", "--reload"]
+
 volumes:
   postgres_data:
   chroma_data:

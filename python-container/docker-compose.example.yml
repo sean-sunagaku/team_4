@@ -1,0 +1,16 @@
+# Docker Compose統合用サンプル
+# 別リポジトリのdocker-compose.ymlにこのサービスを追加してください
+
+services:
+  speed-detector:
+    build:
+      context: ./python-container
+      dockerfile: Dockerfile
+    ports:
+      - "9000:9000"
+    volumes:
+      # 開発時はソースをマウント
+      - ./python-container/src:/app/src:ro
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
