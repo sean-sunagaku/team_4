@@ -33,7 +33,7 @@
   <div id="result">
     <p><strong>緯度:</strong> <span id="lat"></span></p>
     <p><strong>経度:</strong> <span id="lon"></span></p>
-    <p><strong>精度:</strong> <span id="acc"></span> m</p>
+    <p><strong>都市:</strong> <span id="city"></span></p>
   </div>
 
   <script src="geolocation.js"></script>
@@ -43,7 +43,7 @@
         function (result) {
           document.getElementById("lat").textContent = result.latitude;
           document.getElementById("lon").textContent = result.longitude;
-          document.getElementById("acc").textContent = result.accuracy;
+          document.getElementById("city").textContent = result.city + ', ' + result.region;
           document.getElementById("result").classList.add("show");
         },
         function (error) {
