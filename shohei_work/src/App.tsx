@@ -252,7 +252,7 @@ function App() {
             <div className="ai-consult-card">
               <div className="ai-consult-title">AIに相談（音声）</div>
               <div className="ai-consult-subtitle">
-                運転中の疑問を話しかけてください（タップで開始/停止）
+                運転中の疑問を話しかけてください
               </div>
               <div className="ai-consult-action">
                 <AIChatButton autoStart={isNavigating} placement="inline" />
