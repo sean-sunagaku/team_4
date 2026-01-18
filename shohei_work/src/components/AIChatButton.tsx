@@ -14,6 +14,47 @@ const VOICE_ACTIVITY_THRESHOLD = 0.005 // 音声があるとみなす閾値
 // API Base URL
 const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:3001'
 
+// 通知音を再生するユーティリティ
+const playNotificationSound = (type: 'wake' | 'end') => {
+  const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
+
+  const playTone = (frequency: number, startTime: number, duration: number, volume: number) => {
+    const oscillator = audioContext.createOscillator()
+    const gainNode = audioContext.createGain()
+
+    oscillator.connect(gainNode)
+    gainNode.connect(audioContext.destination)
+
+    oscillator.frequency.value = frequency
+    oscillator.type = 'sine'
+
+    gainNode.gain.setValueAtTime(0, startTime)
+    gainNode.gain.linearRampToValueAtTime(volume, startTime + 0.02)
+    gainNode.gain.linearRampToValueAtTime(0, startTime + duration)
+
+    oscillator.start(startTime)
+    oscillator.stop(startTime + duration)
+  }
+
+  const now = audioContext.currentTime
+
+  if (type === 'wake') {
+    // 上昇する2音（ポップン♪）- 録音開始
+    playTone(880, now, 0.12, 0.3)           // A5
+    playTone(1108.73, now + 0.08, 0.15, 0.3) // C#6
+  } else {
+    // 下降する2音（ポロン♪）- 録音終了
+    playTone(1108.73, now, 0.12, 0.25)      // C#6
+    playTone(880, now + 0.08, 0.15, 0.25)   // A5
+  }
+}
+
+// ウェイクワード検出時の通知音
+const playWakeSound = () => playNotificationSound('wake')
+
+// 録音終了時の通知音
+const playEndSound = () => playNotificationSound('end')
+
 type VoiceState = 'idle' | 'listening' | 'recording' | 'processing' | 'speaking'
 
 interface AIChatButtonProps {
@@ -38,7 +79,6 @@ const AIChatButton = ({ autoStart = false, placement = 'floating', alwaysListen 
   // Wake word detection refs
   const wakeCheckIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const wakeRecorderRef = useRef<MediaRecorder | null>(null)
-  const wakeWordBufferRef = useRef<Blob[]>([])
   const alwaysListenRef = useRef(alwaysListen)
 
   // Audio playback (URL-based, e.g., Qwen TTS)
@@ -212,6 +252,8 @@ const AIChatButton = ({ autoStart = false, placement = 'floating', alwaysListen 
   // 音声送信
   const sendVoiceMessage = useCallback(async (audioBlob: Blob) => {
     setVoiceState('processing')
+    // 録音終了の通知音
+    playEndSound()
     resetAudioQueue()
 
     try {
@@ -318,29 +360,6 @@ const AIChatButton = ({ autoStart = false, placement = 'floating', alwaysListen 
       console.error('Wake word check failed:', error)
       return { detected: false }
     }
-  }, [])
-
-  // リスニング停止
-  const stopListening = useCallback(() => {
-    if (wakeCheckIntervalRef.current) {
-      clearInterval(wakeCheckIntervalRef.current)
-      wakeCheckIntervalRef.current = null
-    }
-    if (wakeRecorderRef.current && wakeRecorderRef.current.state !== 'inactive') {
-      wakeRecorderRef.current.stop()
-    }
-    wakeRecorderRef.current = null
-    // ストリームも停止
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop())
-      streamRef.current = null
-    }
-    if (audioContextRef.current) {
-      audioContextRef.current.close()
-      audioContextRef.current = null
-    }
-    analyserRef.current = null
-    setVoiceState('idle')
   }, [])
 
   // startListening用のref（循環参照を避けるため）
@@ -516,6 +535,8 @@ const AIChatButton = ({ autoStart = false, placement = 'floating', alwaysListen 
 
           if (result.detected) {
             console.log('ウェイクワード検出！録音モードに切り替え...')
+            // 通知音を再生
+            playWakeSound()
             // ウェイクワード検出 -> 録音モードへ
             if (wakeCheckIntervalRef.current) {
               clearInterval(wakeCheckIntervalRef.current)
@@ -566,15 +587,12 @@ const AIChatButton = ({ autoStart = false, placement = 'floating', alwaysListen 
   }, [startListening, alwaysListen])
 
   // autoStart/alwaysListenがtrueになったら自動的に開始
-  const hasAutoStartedRef = useRef(false)
-  const autoStartRef = useRef(autoStart)
   const alwaysListenPropRef = useRef(alwaysListen)
 
   // propsをrefに保存
   useEffect(() => {
-    autoStartRef.current = autoStart
     alwaysListenPropRef.current = alwaysListen
-  }, [autoStart, alwaysListen])
+  }, [alwaysListen])
 
   useEffect(() => {
     console.log('AIChatButton mount effect:', { autoStart, alwaysListen, voiceState })

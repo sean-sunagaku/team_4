@@ -2,7 +2,7 @@
  * 登録された会話を確認するスクリプト
  */
 
-const BASE_URL = 'http://localhost:3001';
+const BASE_URL = process.env.BASE_URL || 'http://localhost:3001';
 
 async function checkConversations() {
   console.log('=== 登録された会話を確認 ===\n');
@@ -46,3 +46,5 @@ async function checkConversations() {
 }
 
 checkConversations().catch(console.error);
+
+export {};

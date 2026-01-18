@@ -55,13 +55,16 @@ export async function transcribeAudio(
         messages: [
           {
             role: 'system',
-            content: [{ text: '' }],
+            content: [{ text: '日本語で音声認識してください。' }],
           },
           {
             role: 'user',
             content: [{ audio: formattedAudioData }],
           },
         ],
+      },
+      parameters: {
+        language_hints: ['ja'],  // 日本語を優先
       },
     };
 
