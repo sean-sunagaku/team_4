@@ -8,8 +8,6 @@ const aiIcon = new URL('../icon/ai_icon.png', import.meta.url).href
 const SILENCE_THRESHOLD = 0.01
 const SILENCE_DURATION = 1500
 const MIN_RECORDING_DURATION = 500
-const WAKE_CHECK_INTERVAL = 3000 // 3秒ごとにウェイクワードチェック
-const VOICE_ACTIVITY_THRESHOLD = 0.005 // 音声があるとみなす閾値
 
 // API Base URL
 const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:3001'
@@ -77,9 +75,13 @@ const AIChatButton = ({ autoStart = false, placement = 'floating', alwaysListen 
   const recordingStartTimeRef = useRef(0)
 
   // Wake word detection refs
-  const wakeCheckIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const wakeRecorderRef = useRef<MediaRecorder | null>(null)
   const alwaysListenRef = useRef(alwaysListen)
+
+  // WebSocket ASR refs (real-time wake word detection)
+  const wsRef = useRef<WebSocket | null>(null)
+  const isUsingWebSocketRef = useRef(false)
+  const audioWorkletRef = useRef<ScriptProcessorNode | null>(null)
+  const startAudioStreamingRef = useRef<(() => void) | null>(null)
 
   // Audio playback (URL-based, e.g., Qwen TTS)
   const audioQueueRef = useRef<{ url: string; index: number }[]>([])
@@ -117,6 +119,22 @@ const AIChatButton = ({ autoStart = false, placement = 'floating', alwaysListen 
       reader.onerror = reject
       reader.readAsDataURL(blob)
     })
+  }
+
+  // Float32 PCM to 16-bit PCM Base64 (for WebSocket ASR streaming)
+  // DashScope公式推奨: 1024バイト/チャンク（512サンプル = 32ms @ 16kHz）
+  const float32ToPCM16Base64 = (float32Array: Float32Array): string => {
+    const int16Array = new Int16Array(float32Array.length)
+    for (let i = 0; i < float32Array.length; i++) {
+      const s = Math.max(-1, Math.min(1, float32Array[i]))
+      int16Array[i] = s < 0 ? s * 0x8000 : s * 0x7fff
+    }
+    const uint8Array = new Uint8Array(int16Array.buffer)
+    let binary = ''
+    for (let i = 0; i < uint8Array.length; i++) {
+      binary += String.fromCharCode(uint8Array[i])
+    }
+    return btoa(binary)
   }
 
   // 音声再生完了後にlistening or idleに戻る用のref
@@ -309,15 +327,16 @@ const AIChatButton = ({ autoStart = false, placement = 'floating', alwaysListen 
   // 完全クリーンアップ（ストリームも含む）
   const cleanup = useCallback(() => {
     cleanupRecording()
-    // Wake word detection cleanup
-    if (wakeCheckIntervalRef.current) {
-      clearInterval(wakeCheckIntervalRef.current)
-      wakeCheckIntervalRef.current = null
+    // WebSocket ASR cleanup
+    if (audioWorkletRef.current) {
+      audioWorkletRef.current.disconnect()
+      audioWorkletRef.current = null
     }
-    if (wakeRecorderRef.current && wakeRecorderRef.current.state !== 'inactive') {
-      wakeRecorderRef.current.stop()
+    if (wsRef.current) {
+      wsRef.current.close()
+      wsRef.current = null
     }
-    wakeRecorderRef.current = null
+    isUsingWebSocketRef.current = false
     // Stream cleanup
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop())
@@ -329,38 +348,6 @@ const AIChatButton = ({ autoStart = false, placement = 'floating', alwaysListen 
     }
     analyserRef.current = null
   }, [cleanupRecording])
-
-  // ウェイクワードチェック（サーバーAPI呼び出し）
-  const checkWakeWord = useCallback(async (audioBlob: Blob): Promise<{ detected: boolean; transcription?: string }> => {
-    try {
-      const audioData = await blobToBase64(audioBlob)
-      const response = await fetch(`${API_BASE_URL}/api/voice/detect-wake-word`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ audio: audioData, format: 'webm' }),
-      })
-
-      if (!response.ok) {
-        console.error('Wake word API error:', response.status)
-        return { detected: false }
-      }
-
-      const text = await response.text()
-      if (!text) return { detected: false }
-
-      try {
-        const result = JSON.parse(text)
-        console.log('Wake word result:', result)
-        return { detected: result.detected, transcription: result.transcription }
-      } catch {
-        console.error('Failed to parse wake word response')
-        return { detected: false }
-      }
-    } catch (error) {
-      console.error('Wake word check failed:', error)
-      return { detected: false }
-    }
-  }, [])
 
   // startListening用のref（循環参照を避けるため）
   const startListeningRef = useRef<() => void>(() => {})
@@ -470,7 +457,7 @@ const AIChatButton = ({ autoStart = false, placement = 'floating', alwaysListen 
     await startRecordingWithStream()
   }, [startRecordingWithStream])
 
-  // リスニング開始（ウェイクワード待ち受け）
+  // リスニング開始（ウェイクワード待ち受け）- WebSocket ASR
   const startListening = useCallback(async () => {
     try {
       // 既存ストリームがなければ新規取得
@@ -495,81 +482,99 @@ const AIChatButton = ({ autoStart = false, placement = 'floating', alwaysListen 
 
       setVoiceState('listening')
 
-      // REST APIポーリングでウェイクワード検出
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-        ? 'audio/webm;codecs=opus'
-        : 'audio/webm'
+      // WebSocket ASR接続（リアルタイムウェイクワード検出）
+      const wsUrl = `${API_BASE_URL.replace(/^http/, 'ws')}/ws/asr`
+      console.log('Connecting to WebSocket ASR:', wsUrl)
 
-      let currentRecorder: MediaRecorder | null = null
-      let audioChunks: Blob[] = []
+      const ws = new WebSocket(wsUrl)
+      wsRef.current = ws
 
-      const createNewRecording = () => {
-        if (currentRecorder && currentRecorder.state !== 'inactive') {
-          currentRecorder.stop()
-        }
-
-        if (!streamRef.current) return
-
-        currentRecorder = new MediaRecorder(streamRef.current, { mimeType })
-        wakeRecorderRef.current = currentRecorder
-        audioChunks = []
-
-        currentRecorder.ondataavailable = (event) => {
-          if (event.data.size > 0) {
-            audioChunks.push(event.data)
-          }
-        }
-
-        currentRecorder.onstop = async () => {
-          if (audioChunks.length === 0) return
-
-          // 音声アクティビティがある場合のみチェック
-          const rms = calculateRMS()
-          if (rms < VOICE_ACTIVITY_THRESHOLD) {
-            return
-          }
-
-          const audioBlob = new Blob(audioChunks, { type: 'audio/webm' })
-          const result = await checkWakeWord(audioBlob)
-          console.log('Wake word check result:', result)
-
-          if (result.detected) {
-            console.log('ウェイクワード検出！録音モードに切り替え...')
-            // 通知音を再生
-            playWakeSound()
-            // ウェイクワード検出 -> 録音モードへ
-            if (wakeCheckIntervalRef.current) {
-              clearInterval(wakeCheckIntervalRef.current)
-              wakeCheckIntervalRef.current = null
-            }
-            // 既存ストリームを使って録音開始
-            startRecordingWithStream(streamRef.current!)
-          }
-        }
-
-        currentRecorder.start()
+      ws.onopen = () => {
+        console.log('WebSocket connected for real-time ASR')
+        isUsingWebSocketRef.current = true
       }
 
-      createNewRecording()
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data)
 
-      // 3秒ごとにウェイクワードチェック
-      wakeCheckIntervalRef.current = setInterval(() => {
-        if (currentRecorder && currentRecorder.state === 'recording') {
-          currentRecorder.stop()
-        }
-        setTimeout(() => {
-          if (wakeCheckIntervalRef.current) {
-            createNewRecording()
+          if (data.type === 'ready') {
+            console.log('DashScope ASR ready, starting audio streaming')
+            startAudioStreamingRef.current?.()
+          } else if (data.type === 'transcript') {
+            console.log(`ASR transcript: "${data.text}" (final: ${data.isFinal}, wake: ${data.wakeWordDetected})`)
+
+            if (data.wakeWordDetected) {
+              console.log('ウェイクワード検出！録音モードに切り替え...')
+              playWakeSound()
+
+              // WebSocket ASRを停止
+              if (audioWorkletRef.current) {
+                audioWorkletRef.current.disconnect()
+                audioWorkletRef.current = null
+              }
+              ws.send(JSON.stringify({ type: 'finish' }))
+
+              // 録音モードへ移行
+              startRecordingWithStream(streamRef.current!)
+            }
+          } else if (data.type === 'error') {
+            console.error('WebSocket ASR error:', data.error)
           }
-        }, 100)
-      }, WAKE_CHECK_INTERVAL)
+        } catch (err) {
+          console.error('WebSocket message parse error:', err)
+        }
+      }
+
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error)
+        isUsingWebSocketRef.current = false
+        setVoiceState('idle')
+      }
+
+      ws.onclose = () => {
+        console.log('WebSocket closed')
+        wsRef.current = null
+        isUsingWebSocketRef.current = false
+        if (audioWorkletRef.current) {
+          audioWorkletRef.current.disconnect()
+          audioWorkletRef.current = null
+        }
+      }
+
+      // 音声ストリーミング関数（WebSocket ready後に呼ばれる）
+      const startAudioStreaming = () => {
+        if (!audioContextRef.current || !streamRef.current) return
+
+        // ScriptProcessorNode: 512サンプル = 32ms（DashScope公式推奨: 1024バイト、30ms間隔）
+        // https://www.alibabacloud.com/help/en/model-studio/qwen-real-time-speech-recognition
+        const scriptNode = audioContextRef.current.createScriptProcessor(512, 1, 1)
+        audioWorkletRef.current = scriptNode
+
+        const source = audioContextRef.current.createMediaStreamSource(streamRef.current)
+        source.connect(scriptNode)
+        scriptNode.connect(audioContextRef.current.destination)
+
+        scriptNode.onaudioprocess = (e) => {
+          if (wsRef.current?.readyState === WebSocket.OPEN) {
+            const inputData = e.inputBuffer.getChannelData(0)
+            const audioBase64 = float32ToPCM16Base64(inputData)
+            // 32ms単位で即座に送信（1024バイト/チャンク）
+            wsRef.current.send(JSON.stringify({ type: 'audio', audio: audioBase64 }))
+          }
+        }
+
+        console.log('Audio streaming started (bufferSize: 512, ~32ms per chunk)')
+      }
+
+      startAudioStreamingRef.current = startAudioStreaming
 
     } catch (error) {
       console.error('Failed to start listening:', error)
       alert('マイクへのアクセスが許可されていません。')
       setVoiceState('idle')
     }
-  }, [checkWakeWord, startRecordingWithStream])
+  }, [startRecordingWithStream])
 
   // refを更新
   useEffect(() => {
@@ -632,12 +637,15 @@ const AIChatButton = ({ autoStart = false, placement = 'floating', alwaysListen 
       }
     } else if (voiceState === 'listening') {
       // リスニング中にタップで手動録音開始
-      if (wakeCheckIntervalRef.current) {
-        clearInterval(wakeCheckIntervalRef.current)
-        wakeCheckIntervalRef.current = null
+      // WebSocket ASR cleanup
+      if (audioWorkletRef.current) {
+        audioWorkletRef.current.disconnect()
+        audioWorkletRef.current = null
       }
-      if (wakeRecorderRef.current && wakeRecorderRef.current.state !== 'inactive') {
-        wakeRecorderRef.current.stop()
+      if (wsRef.current) {
+        wsRef.current.send(JSON.stringify({ type: 'finish' }))
+        wsRef.current.close()
+        wsRef.current = null
       }
       startRecordingWithStream(streamRef.current!)
     } else if (voiceState === 'recording') {
