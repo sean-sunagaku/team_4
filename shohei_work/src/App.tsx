@@ -1,11 +1,14 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { GoogleMap, LoadScript, DirectionsRenderer, Marker } from '@react-google-maps/api'
-import SearchPanel from './components/SearchPanel'
+import AIChatButton from './components/AIChatButton'
 import NavigationPanel from './components/NavigationPanel'
+import DrivingSupportPanel from './components/DrivingSupportPanel'
 import { useNavigation } from './hooks/useNavigation'
 import './App.css'
 
-const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ''
+const naviIcon = new URL('./icon/navi_icon.png', import.meta.url).href
+
+const GOOGLE_MAPS_API_KEY = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY || ''
 
 const defaultCenter = {
   lat: 35.6762,
@@ -18,51 +21,104 @@ const mapContainerStyle = {
 }
 
 const defaultOptions = {
-  zoomControl: true,
+  zoomControl: false,
   streetViewControl: false,
   mapTypeControl: false,
-  fullscreenControl: true,
+  fullscreenControl: false,
+  disableDefaultUI: true,
+  styles: [
+    {
+      featureType: 'poi',
+      elementType: 'labels',
+      stylers: [{ visibility: 'off' }]
+    },
+    {
+      featureType: 'transit',
+      elementType: 'labels',
+      stylers: [{ visibility: 'off' }]
+    },
+    {
+      featureType: 'road',
+      elementType: 'geometry',
+      stylers: [
+        { color: '#2d2d2d' },
+        { weight: 1 }
+      ]
+    },
+    {
+      featureType: 'road.highway',
+      elementType: 'geometry',
+      stylers: [
+        { color: '#3d3d3d' },
+        { weight: 2 }
+      ]
+    },
+    {
+      featureType: 'water',
+      elementType: 'geometry',
+      stylers: [{ color: '#1a1a2e' }]
+    },
+    {
+      featureType: 'landscape',
+      elementType: 'geometry',
+      stylers: [{ color: '#2d2d2d' }]
+    },
+    {
+      featureType: 'all',
+      elementType: 'labels.text.fill',
+      stylers: [{ color: '#ffffff' }]
+    },
+    {
+      featureType: 'all',
+      elementType: 'labels.text.stroke',
+      stylers: [{ color: '#000000' }]
+    }
+  ],
+  tilt: 45,
+  heading: 0,
 }
 
 function App() {
-  const [destination, setDestination] = useState<string>('')
   const [isNavigating, setIsNavigating] = useState(false)
   const {
     currentLocation,
     directions,
     routeInfo,
-    isLocationLoading,
+    clearRoute,
     getCurrentLocation,
     calculateRoute,
-    clearRoute,
   } = useNavigation()
 
-  const handleSearch = async (address: string) => {
-    setDestination(address)
-    if (currentLocation) {
-      await calculateRoute(currentLocation, address)
-      setIsNavigating(true)
-    }
-  }
-
-  const handleStartNavigation = async () => {
-    if (!currentLocation) {
-      await getCurrentLocation()
-    }
-    if (destination && currentLocation) {
-      await calculateRoute(currentLocation, destination)
-      setIsNavigating(true)
-    }
-  }
+  // アプリ起動時に現在地を取得
+  useEffect(() => {
+    getCurrentLocation()
+  }, [getCurrentLocation])
 
   const handleStopNavigation = () => {
     setIsNavigating(false)
     clearRoute()
-    setDestination('')
   }
 
-  const handleGetCurrentLocation = async () => {
-    await getCurrentLocation()
+  const handleAIChatClick = () => {
+    // TODO: AIチャット機能を実装
+    console.log('AIと話すボタンがクリックされました')
+    alert('AIチャット機能は今後実装予定です')
+  }
+
+  const handleStartNavigation = async () => {
+    // 現在地を取得
+    if (!currentLocation) {
+      await getCurrentLocation()
+    }
+    
+    // 目的地を設定（一時的に固定値、後でAIチャットから設定できるようにする）
+    const destination = prompt('目的地を入力してください:')
+    if (destination && currentLocation) {
+      await calculateRoute(currentLocation, destination)
+      setIsNavigating(true)
+    } else if (!currentLocation) {
+      alert('現在地を取得できませんでした。位置情報の許可を確認してください。')
+    }
   }
 
   if (!GOOGLE_MAPS_API_KEY) {
@@ -86,35 +142,34 @@ function App() {
   }
 
   return (
-    <LoadScript googleMapsApiKey={GOOGLE_MAPS_API_KEY} libraries={['places', 'directions']}>
+    <LoadScript googleMapsApiKey={GOOGLE_MAPS_API_KEY} libraries={['places']}>
       <div className="app-container">
         <GoogleMap
           mapContainerStyle={mapContainerStyle}
           center={currentLocation || defaultCenter}
-          zoom={currentLocation ? 15 : 10}
+          zoom={currentLocation ? 18 : 10}
           options={defaultOptions}
+          tilt={45}
         >
-          {currentLocation && (
+          {currentLocation && typeof google !== 'undefined' && (
             <Marker
               position={currentLocation}
               icon={{
-                url: 'http://maps.google.com/mapfiles/ms/icons/blue-dot.png',
+                url: naviIcon,
+                scaledSize: new google.maps.Size(48, 48),
+                anchor: new google.maps.Point(24, 24),
               }}
-              label="現在地"
             />
           )}
           {directions && <DirectionsRenderer directions={directions} />}
         </GoogleMap>
 
+        <DrivingSupportPanel 
+          onStartNavigation={handleStartNavigation} 
+          isNavigating={isNavigating}
+        />
         {!isNavigating ? (
-          <SearchPanel
-            onSearch={handleSearch}
-            onGetCurrentLocation={handleGetCurrentLocation}
-            isLocationLoading={isLocationLoading}
-            destination={destination}
-            onDestinationChange={setDestination}
-            onStartNavigation={handleStartNavigation}
-          />
+          <AIChatButton onClick={handleAIChatClick} />
         ) : (
           <NavigationPanel
             routeInfo={routeInfo}
