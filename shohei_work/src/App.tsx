@@ -96,12 +96,6 @@ function App() {
     clearRoute()
   }
 
-  const handleAIChatClick = () => {
-    // TODO: AIチャット機能を実装
-    console.log('AIと話すボタンがクリックされました')
-    alert('AIチャット機能は今後実装予定です')
-  }
-
   const handleOpenNavigationModal = () => {
     setIsModalOpen(true)
   }
@@ -211,7 +205,7 @@ function App() {
           onStartNavigation={handleNavigationFormSubmit}
         />
         {!isNavigating ? (
-          <AIChatButton onClick={handleAIChatClick} />
+          <AIChatButton />
         ) : (
           <NavigationPanel
             routeInfo={routeInfo}

@@ -1,5 +1,4 @@
 import { useState, useCallback } from 'react'
-import { DirectionsService, DirectionsRenderer } from '@react-google-maps/api'
 import { Geocoder } from '../utils/geocoder'
 
 export interface RouteInfo {
