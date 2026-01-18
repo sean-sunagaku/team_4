@@ -117,6 +117,46 @@
   background: rgba(255, 255, 255, 0.2);
 }
 
+.departure-input-container {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.departure-input-container .form-input {
+  flex: 1;
+}
+
+.get-location-button {
+  padding: 12px 16px;
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 10px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: white;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.get-location-button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
+.get-location-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.location-error {
+  color: #ff6b6b;
+  font-size: 0.8rem;
+  margin-top: 8px;
+  margin-bottom: 0;
+}
+
 .modal-actions {
   display: flex;
   gap: 12px;
@@ -183,5 +223,14 @@
 
   .modal-actions {
     flex-direction: column;
+  }
+
+  .departure-input-container {
+    flex-direction: column;
+  }
+
+  .get-location-button {
+    width: 100%;
+    padding: 10px 14px;
   }
 }

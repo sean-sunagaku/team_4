@@ -12,6 +12,14 @@ interface NavigationStartModalProps {
   onStartNavigation: (formData: NavigationFormData) => void
 }
 
+interface LocationData {
+  latitude: number
+  longitude: number
+  accuracy: number
+  city: string
+  region: string
+}
+
 const NavigationStartModal = ({
   isOpen,
   onClose,
@@ -21,9 +29,38 @@ const NavigationStartModal = ({
     departure: '',
     weakPoints: ''
   })
+  const [isLoadingLocation, setIsLoadingLocation] = useState(false)
+  const [locationError, setLocationError] = useState<string | null>(null)
 
   const handleInputChange = (field: keyof NavigationFormData, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }))
+  }
+
+  const getLocation = async (): Promise<LocationData> => {
+    const res = await fetch('https://ipapi.co/json/')
+    const data = await res.json()
+    return {
+      latitude: data.latitude,
+      longitude: data.longitude,
+      accuracy: 5000,
+      city: data.city,
+      region: data.region,
+    }
+  }
+
+  const handleGetCurrentLocation = async () => {
+    setIsLoadingLocation(true)
+    setLocationError(null)
+    try {
+      const location = await getLocation()
+      const locationString = `${location.latitude}, ${location.longitude}`
+      setFormData(prev => ({ ...prev, departure: locationString }))
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : '不明なエラー'
+      setLocationError('位置情報の取得に失敗しました: ' + errorMessage)
+    } finally {
+      setIsLoadingLocation(false)
+    }
   }
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -52,13 +89,26 @@ const NavigationStartModal = ({
         <form onSubmit={handleSubmit} className="modal-form">
           <div className="form-group">
             <label className="form-label">出発地点</label>
-            <input
-              type="text"
-              className="form-input"
-              value={formData.departure}
-              onChange={(e) => handleInputChange('departure', e.target.value)}
-              placeholder="現在地または出発地点を入力"
-            />
+            <div className="departure-input-container">
+              <input
+                type="text"
+                className="form-input"
+                value={formData.departure}
+                onChange={(e) => handleInputChange('departure', e.target.value)}
+                placeholder="現在地または出発地点を入力"
+              />
+              <button
+                type="button"
+                className="get-location-button"
+                onClick={handleGetCurrentLocation}
+                disabled={isLoadingLocation}
+              >
+                {isLoadingLocation ? '取得中...' : '現在地を取得'}
+              </button>
+            </div>
+            {locationError && (
+              <p className="location-error">{locationError}</p>
+            )}
           </div>
 
           <div className="form-group">
