@@ -3,6 +3,7 @@ import { ragConfig } from '../config/rag.config.js';
 
 let client: ChromaClient | null = null;
 let collection: Collection | null = null;
+let sharedConversationsCollection: Collection | null = null;
 
 /**
  * ChromaDBクライアントを初期化する
@@ -160,4 +161,114 @@ export async function getAllDocuments(): Promise<{ id: string; text: string }[]>
   }
 
   return documents;
+}
+
+// ============================================
+// Shared Conversations Collection Operations
+// ============================================
+
+/**
+ * 共有会話コレクションを取得または作成する
+ */
+export async function getOrCreateSharedConversationsCollection(): Promise<Collection> {
+  if (sharedConversationsCollection) {
+    return sharedConversationsCollection;
+  }
+
+  const chromaClient = await initChromaClient();
+
+  sharedConversationsCollection = await chromaClient.getOrCreateCollection({
+    name: ragConfig.chromadb.sharedConversationsCollection,
+    metadata: {
+      description: 'Shared conversation Q&A pairs for knowledge sharing',
+    },
+  });
+
+  return sharedConversationsCollection;
+}
+
+/**
+ * 共有会話コレクションをリセットする
+ */
+export async function resetSharedConversationsCollection(): Promise<Collection> {
+  const chromaClient = await initChromaClient();
+
+  try {
+    await chromaClient.deleteCollection({ name: ragConfig.chromadb.sharedConversationsCollection });
+  } catch {
+    // コレクションが存在しない場合は無視
+  }
+
+  sharedConversationsCollection = null;
+  return getOrCreateSharedConversationsCollection();
+}
+
+export interface ConversationDocumentData {
+  id: string;
+  text: string;
+  embedding: number[];
+  metadata: {
+    conversationId: string;
+    questionId: string;
+    answerId: string;
+    createdAt: string;
+    category: string;
+  };
+}
+
+/**
+ * 会話Q&Aペアを共有コレクションに追加する
+ */
+export async function addConversationDocument(document: ConversationDocumentData): Promise<void> {
+  const col = await getOrCreateSharedConversationsCollection();
+
+  await col.add({
+    ids: [document.id],
+    embeddings: [document.embedding],
+    documents: [document.text],
+    metadatas: [document.metadata],
+  });
+
+  console.log(`Added conversation document to shared collection: ${document.id}`);
+}
+
+/**
+ * 共有会話コレクションで類似検索を実行する
+ */
+export async function searchSharedConversations(
+  queryEmbedding: number[],
+  topK: number = 5
+): Promise<SearchResult[]> {
+  const col = await getOrCreateSharedConversationsCollection();
+
+  const results = await col.query({
+    queryEmbeddings: [queryEmbedding],
+    nResults: topK,
+  });
+
+  const searchResults: SearchResult[] = [];
+
+  if (results.ids[0]) {
+    for (let i = 0; i < results.ids[0].length; i++) {
+      searchResults.push({
+        id: results.ids[0][i],
+        text: results.documents?.[0]?.[i] || '',
+        distance: results.distances?.[0]?.[i] || 0,
+        metadata: results.metadatas?.[0]?.[i] as Record<
+          string,
+          string | number | boolean
+        >,
+      });
+    }
+  }
+
+  return searchResults;
+}
+
+/**
+ * 共有会話コレクション内のドキュメント数を取得する
+ */
+export async function getSharedConversationsCount(): Promise<number> {
+  const col = await getOrCreateSharedConversationsCollection();
+  return await col.count();
 }
