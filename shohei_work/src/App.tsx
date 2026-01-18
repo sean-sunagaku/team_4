@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { GoogleMap, LoadScript, DirectionsRenderer, Marker } from '@react-google-maps/api'
 import AIChatButton from './components/AIChatButton'
 import NavigationPanel from './components/NavigationPanel'
@@ -10,6 +10,7 @@ import './App.css'
 const naviIcon = new URL('./icon/navi_icon.png', import.meta.url).href
 
 const GOOGLE_MAPS_API_KEY = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY || ''
+const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:3001'
 
 const defaultCenter = {
   lat: 35.6762,
@@ -87,14 +88,8 @@ function App() {
     directions,
     routeInfo,
     clearRoute,
-    getCurrentLocation,
     calculateRoute,
   } = useNavigation()
-
-  // アプリ起動時に現在地を取得
-  useEffect(() => {
-    getCurrentLocation()
-  }, [getCurrentLocation])
 
   const handleStopNavigation = () => {
     setIsNavigating(false)
@@ -116,7 +111,7 @@ function App() {
 
     try {
       // /api/route/suggest APIを呼び出し
-      const response = await fetch('http://localhost:3000/api/route/suggest', {
+      const response = await fetch(`${API_BASE_URL}/api/route/suggest`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

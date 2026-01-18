@@ -201,19 +201,13 @@ function needsRAGSearch(content: string): boolean {
 
 const app = new Hono();
 const PORT = process.env.PORT || 3001;
-const CLIENT_URLS = [
-  process.env.CLIENT_URL || "http://localhost:3000",
-  "http://localhost:3002",
-  "http://localhost:3003",
-];
-
-// CORS middleware
+// CORS middleware - allow all origins
 app.use(
   "/*",
   cors({
-    origin: CLIENT_URLS,
-    allowMethods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
-    credentials: true,
+    origin: "*",
+    allowMethods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allowHeaders: ["Content-Type", "Authorization"],
   }),
 );
 
