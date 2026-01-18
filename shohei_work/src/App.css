@@ -68,13 +68,14 @@
 /* グリッドレイアウト（デフォルトは2カラム: 左ミッション / 中央マップ） */
 .app-container.grid-layout {
   display: grid;
-  grid-template-columns: 280px 1fr;
+  --left-panel-width: 420px;
+  grid-template-columns: var(--left-panel-width) 1fr;
   grid-template-rows: 1fr;
 }
 
 /* ナビゲーション中は2カラム（左: ミッションリスト / 右: Google Mapsボタン） */
 .app-container.grid-layout.navigating-mode {
-  grid-template-columns: 280px 1fr;
+  grid-template-columns: var(--left-panel-width) 1fr;
 }
 
 
