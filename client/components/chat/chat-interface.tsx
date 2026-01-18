@@ -39,11 +39,11 @@ const WAKE_WORDS = [
   "ドライバディー",
 ];
 
-// Voice detection constants
-const SILENCE_THRESHOLD = 0.01; // RMS threshold (0-1)
-const SILENCE_DURATION = 1500; // 1.5秒無音で終了
+// Voice detection constants - ノイズ対策強化版
+const SILENCE_THRESHOLD = 0.05; // RMS threshold (0-1) - 雑音をフィルタするため高めに設定
+const SILENCE_DURATION = 1200; // 1.2秒無音で終了（少し短縮）
 const WAKE_CHECK_INTERVAL = 3000; // 3秒ごとにウェイクワードチェック（録音時間を確保）
-const VOICE_ACTIVITY_THRESHOLD = 0.005; // 音声があるとみなす閾値（API呼び出し削減用）- 低めに設定
+const VOICE_ACTIVITY_THRESHOLD = 0.03; // 音声があるとみなす閾値 - 雑音をフィルタするため高めに設定
 const RECORDING_TIMEOUT = 15000; // 15秒間音声なしでタイムアウト
 const MIN_RECORDING_DURATION = 500; // 最小録音時間（誤検出防止）
 
@@ -323,7 +323,13 @@ export function ChatInterface() {
   // Start voice recording
   const startRecording = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
       const mediaRecorder = new MediaRecorder(stream, {
         mimeType: "audio/webm;codecs=opus",
       });
@@ -526,13 +532,14 @@ export function ChatInterface() {
   // Start listening for wake word (LISTENING state) - WebSocket version
   const startListening = useCallback(async () => {
     try {
-      // Get microphone access with 16kHz sample rate
+      // Get microphone access with 16kHz sample rate and noise suppression
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           sampleRate: 16000,
           channelCount: 1,
           echoCancellation: true,
           noiseSuppression: true,
+          autoGainControl: true,
         },
       });
       streamRef.current = stream;
