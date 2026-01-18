@@ -9,16 +9,18 @@ export const chatApi = {
       onTranscription?: (text: string) => void;
       onChunk?: (chunk: string) => void;
       onAudio?: (url: string, index?: number) => void;
+      onTtsText?: (text: string, index?: number) => void; // Browser TTS
       onDone?: (content: string) => void;
       onError?: (error: string) => void;
-    }
+    },
+    ttsMode: 'browser' | 'qwen' = 'browser'
   ): Promise<void> {
     const response = await fetch(`${API_URL}/api/voice/chat`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ audioData, audioFormat }),
+      body: JSON.stringify({ audioData, audioFormat, ttsMode }),
     });
 
     if (!response.ok) {
@@ -55,6 +57,10 @@ export const chatApi = {
                 break;
               case "audio":
                 callbacks.onAudio?.(data.url, data.index);
+                break;
+              case "tts_text":
+                // Browser TTS: text to be spoken by the browser
+                callbacks.onTtsText?.(data.text, data.index);
                 break;
               case "done":
                 callbacks.onDone?.(data.content);

@@ -29,11 +29,16 @@ const AIChatButton = ({ autoStart = false, placement = 'floating' }: AIChatButto
   const hasVoiceActivityRef = useRef(false)
   const recordingStartTimeRef = useRef(0)
 
-  // Audio playback
+  // Audio playback (URL-based, e.g., Qwen TTS)
   const audioQueueRef = useRef<{ url: string; index: number }[]>([])
   const isPlayingRef = useRef(false)
   const nextExpectedIndexRef = useRef(0)
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null)
+
+  // Browser TTS queue (Web Speech API)
+  const browserTtsQueueRef = useRef<{ text: string; index: number }[]>([])
+  const isBrowserSpeakingRef = useRef(false)
+  const nextBrowserTtsIndexRef = useRef(0)
 
   // RMS計算
   const calculateRMS = (): number => {
@@ -122,7 +127,72 @@ const AIChatButton = ({ autoStart = false, placement = 'floating' }: AIChatButto
       audioPlayerRef.current.pause()
       audioPlayerRef.current = null
     }
+    // Also reset browser TTS queue
+    browserTtsQueueRef.current = []
+    nextBrowserTtsIndexRef.current = 0
+    isBrowserSpeakingRef.current = false
+    window.speechSynthesis.cancel()
   }, [])
+
+  // Browser TTS: speak next text in queue
+  const speakNextBrowserTts = useCallback(() => {
+    if (isBrowserSpeakingRef.current) return
+
+    // Sort queue by index and find next expected text
+    browserTtsQueueRef.current.sort((a, b) => a.index - b.index)
+
+    const nextItem = browserTtsQueueRef.current.find(
+      (item) => item.index === nextBrowserTtsIndexRef.current
+    )
+
+    if (nextItem) {
+      isBrowserSpeakingRef.current = true
+      setVoiceState('speaking')
+      browserTtsQueueRef.current = browserTtsQueueRef.current.filter(
+        (item) => item.index !== nextItem.index
+      )
+
+      const utterance = new SpeechSynthesisUtterance(nextItem.text)
+      utterance.lang = 'ja-JP'
+      utterance.rate = 1.0
+      utterance.pitch = 1.0
+
+      // Find Japanese voice if available
+      const voices = window.speechSynthesis.getVoices()
+      const japaneseVoice = voices.find((voice) => voice.lang.includes('ja'))
+      if (japaneseVoice) {
+        utterance.voice = japaneseVoice
+      }
+
+      utterance.onend = () => {
+        isBrowserSpeakingRef.current = false
+        nextBrowserTtsIndexRef.current++
+        // Check if more text in queue
+        if (browserTtsQueueRef.current.length === 0) {
+          setVoiceState('idle')
+        }
+        speakNextBrowserTts() // Speak next
+      }
+
+      utterance.onerror = () => {
+        isBrowserSpeakingRef.current = false
+        nextBrowserTtsIndexRef.current++
+        if (browserTtsQueueRef.current.length === 0) {
+          setVoiceState('idle')
+        }
+        speakNextBrowserTts() // Skip and speak next
+      }
+
+      window.speechSynthesis.speak(utterance)
+      console.log(`Browser TTS[${nextItem.index}]: "${nextItem.text.slice(0, 30)}..."`)
+    }
+  }, [])
+
+  // Add text to browser TTS queue
+  const queueBrowserTts = useCallback((text: string, index: number) => {
+    browserTtsQueueRef.current.push({ text, index })
+    speakNextBrowserTts()
+  }, [speakNextBrowserTts])
 
   // 音声送信
   const sendVoiceMessage = useCallback(async (audioBlob: Blob) => {
@@ -144,9 +214,15 @@ const AIChatButton = ({ autoStart = false, placement = 'floating' }: AIChatButto
           setVoiceState('speaking')
           queueAudio(url, index ?? 0)
         },
+        onTtsText: (text, index) => {
+          // Browser TTS: use Web Speech API for low-latency speech
+          console.log(`Browser TTS[${index}]:`, text.slice(0, 30))
+          queueBrowserTts(text, index ?? 0)
+        },
         onDone: (content) => {
           console.log('Done:', content)
-          if (audioQueueRef.current.length === 0 && !isPlayingRef.current) {
+          if (audioQueueRef.current.length === 0 && !isPlayingRef.current &&
+              browserTtsQueueRef.current.length === 0 && !isBrowserSpeakingRef.current) {
             setVoiceState('idle')
           }
         },
@@ -154,12 +230,12 @@ const AIChatButton = ({ autoStart = false, placement = 'floating' }: AIChatButto
           console.error('Voice chat error:', error)
           setVoiceState('idle')
         },
-      })
+      }, 'qwen') // Use server-side TTS (Qwen API)
     } catch (error) {
       console.error('Failed to send voice message:', error)
       setVoiceState('idle')
     }
-  }, [queueAudio, resetAudioQueue])
+  }, [queueAudio, queueBrowserTts, resetAudioQueue])
 
   // クリーンアップ
   const cleanup = useCallback(() => {
