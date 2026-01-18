@@ -129,6 +129,37 @@
   animation: ripple 1.5s ease-out infinite 0.5s;
 }
 
+/* Listening state (waiting for wake word) */
+.ai-chat-button--listening {
+  background: #10b981 !important;
+  animation: listeningPulse 2s ease-in-out infinite !important;
+}
+
+.ai-chat-button--listening::before {
+  background: rgba(16, 185, 129, 0.4);
+  animation: ripple 2s ease-out infinite;
+}
+
+.ai-chat-button--listening::after {
+  background: rgba(16, 185, 129, 0.2);
+  animation: ripple 2s ease-out infinite 0.7s;
+}
+
+.listening-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.star-icon--listening {
+  filter: brightness(0) invert(1);
+  animation: listeningBreathe 2s ease-in-out infinite;
+}
+
+.listening-text {
+  background: #10b981 !important;
+}
+
 .star-icon {
   z-index: 1;
   position: relative;
@@ -273,6 +304,28 @@
   50% {
     transform: scale(1.03);
     box-shadow: 0 4px 20px rgba(59, 130, 246, 0.5);
+  }
+}
+
+@keyframes listeningPulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 4px 16px rgba(16, 185, 129, 0.4);
+  }
+  50% {
+    transform: scale(1.02);
+    box-shadow: 0 4px 20px rgba(16, 185, 129, 0.5);
+  }
+}
+
+@keyframes listeningBreathe {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.05);
+    opacity: 0.8;
   }
 }
 
