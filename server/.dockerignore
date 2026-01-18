@@ -1,0 +1,14 @@
+node_modules
+.env
+.env.*
+*.log
+.git
+.gitignore
+README.md
+.DS_Store
+dist
+coverage
+.nyc_output
+*.test.ts
+test-*.ts
+check-*.ts

@@ -8,8 +8,12 @@ import {
   resetCollection,
   getDocumentCount,
   getAllDocuments,
+  addConversationDocument,
+  searchSharedConversations as searchSharedConversationsFromDB,
+  getSharedConversationsCount,
   type SearchResult,
   type DocumentData,
+  type ConversationDocumentData,
 } from '../rag/vectordb.js';
 import { getBM25Index, resetBM25Index, type BM25Result } from '../rag/keyword-search.js';
 
@@ -23,13 +27,30 @@ export interface HybridSearchResult {
   id: string;
   text: string;
   score: number;
-  source: 'vector' | 'keyword' | 'hybrid';
+  source: 'vector' | 'keyword' | 'hybrid' | 'car_manual' | 'shared_conversations';
+}
+
+export interface ConversationQAPair {
+  conversationId: string;
+  questionId: string;
+  answerId: string;
+  question: string;
+  answer: string;
+}
+
+interface SimilarityCacheEntry {
+  answer: string;
+  question: string;
+  similarity: number;
+  timestamp: number;
 }
 
 export interface RAGStatus {
   initialized: boolean;
   documentCount: number;
   bm25DocumentCount: number;
+  sharedConversationsCount: number;
+  similarityCacheSize: number;
   configValid: boolean;
   configErrors: string[];
   chromaUrl: string;
@@ -38,6 +59,7 @@ export interface RAGStatus {
 
 class RAGService {
   private initialized = false;
+  private similarityCache: Map<string, SimilarityCacheEntry> = new Map();
 
   /**
    * RAGシステムを初期化する
@@ -129,10 +151,12 @@ class RAGService {
     const configValidation = validateRagConfig();
     let documentCount = 0;
     let bm25DocumentCount = 0;
+    let sharedConversationsCount = 0;
 
     try {
       documentCount = await this.getVectorDocumentCount();
       bm25DocumentCount = getBM25Index().getDocumentCount();
+      sharedConversationsCount = await getSharedConversationsCount();
     } catch {
       // ChromaDB might not be available
     }
@@ -141,6 +165,8 @@ class RAGService {
       initialized: this.initialized,
       documentCount,
       bm25DocumentCount,
+      sharedConversationsCount,
+      similarityCacheSize: this.similarityCache.size,
       configValid: configValidation.valid,
       configErrors: configValidation.errors,
       chromaUrl: ragConfig.chromadb.url,
@@ -337,6 +363,289 @@ class RAGService {
       ...r,
       score: r.score / maxScore,
     }));
+  }
+
+  // ============================================
+  // Shared Conversations & Similarity Cache
+  // ============================================
+
+  /**
+   * 会話Q&AペアをRAGに追加する（非同期）
+   * @param qaPair Q&Aペア情報
+   */
+  async addConversationToRAG(qaPair: ConversationQAPair): Promise<void> {
+    if (!ragConfig.sharedConversations.enabled) {
+      return;
+    }
+
+    try {
+      const combinedText = `Q: ${qaPair.question}\nA: ${qaPair.answer}`;
+      const embedding = await getEmbedding(combinedText);
+      const category = this.categorizeQuestion(qaPair.question);
+
+      const document: ConversationDocumentData = {
+        id: `conv_${qaPair.conversationId}_msg_${qaPair.answerId}`,
+        text: combinedText,
+        embedding,
+        metadata: {
+          conversationId: qaPair.conversationId,
+          questionId: qaPair.questionId,
+          answerId: qaPair.answerId,
+          createdAt: new Date().toISOString(),
+          category,
+        },
+      };
+
+      await addConversationDocument(document);
+
+      // 類似質問キャッシュにも追加（キャッシュ有効時）
+      if (ragConfig.sharedConversations.similarityCacheEnabled) {
+        this.addToSimilarityCache(qaPair.question, qaPair.answer, embedding);
+      }
+
+      console.log(`Conversation added to RAG: ${document.id} (category: ${category})`);
+    } catch (error) {
+      console.error('Failed to add conversation to RAG:', error);
+    }
+  }
+
+  /**
+   * 類似質問キャッシュをチェックする
+   * @param query クエリ
+   * @returns キャッシュヒット時は回答、ミス時はnull
+   */
+  async checkSimilarityCache(query: string): Promise<{ answer: string; similarity: number } | null> {
+    if (!ragConfig.sharedConversations.similarityCacheEnabled) {
+      return null;
+    }
+
+    // キャッシュのクリーンアップ（期限切れエントリを削除）
+    this.cleanupSimilarityCache();
+
+    if (this.similarityCache.size === 0) {
+      return null;
+    }
+
+    try {
+      const queryEmbedding = await getEmbedding(query);
+
+      let bestMatch: SimilarityCacheEntry | null = null;
+      let bestSimilarity = 0;
+
+      for (const [key, entry] of this.similarityCache.entries()) {
+        // キャッシュキーからembeddingを復元して類似度計算
+        // ここでは簡易的にキャッシュされた質問との文字列類似度で判定
+        const similarity = this.calculateTextSimilarity(query, entry.question);
+
+        if (similarity >= ragConfig.sharedConversations.similarityThreshold && similarity > bestSimilarity) {
+          bestMatch = entry;
+          bestSimilarity = similarity;
+        }
+      }
+
+      if (bestMatch) {
+        console.log(`Similarity cache hit! (similarity: ${(bestSimilarity * 100).toFixed(1)}%)`);
+        return { answer: bestMatch.answer, similarity: bestSimilarity };
+      }
+    } catch (error) {
+      console.error('Similarity cache check failed:', error);
+    }
+
+    return null;
+  }
+
+  /**
+   * 共有会話履歴のみを検索する
+   * @param query 検索クエリ
+   * @param options 検索オプション
+   */
+  async searchSharedConversations(query: string, options: RAGSearchOptions = {}): Promise<HybridSearchResult[]> {
+    if (!ragConfig.sharedConversations.enabled) {
+      return [];
+    }
+
+    const topK = Math.min(options.topK || ragConfig.search.defaultTopK, ragConfig.search.maxTopK);
+
+    try {
+      const queryEmbedding = await getEmbedding(query);
+      const results = await searchSharedConversationsFromDB(queryEmbedding, topK);
+
+      return results.map((r) => ({
+        id: r.id,
+        text: r.text,
+        score: 1 - r.distance,
+        source: 'shared_conversations' as const,
+      }));
+    } catch (error) {
+      console.error('searchSharedConversations failed:', error);
+      return [];
+    }
+  }
+
+  /**
+   * 統合検索（取扱説明書 + 共有会話履歴）
+   * @param query 検索クエリ
+   * @param options 検索オプション
+   */
+  async searchAll(query: string, options: RAGSearchOptions = {}): Promise<HybridSearchResult[]> {
+    if (!this.initialized) {
+      const initResult = await this.initialize();
+      if (!initResult.success) {
+        throw new Error(`RAG not initialized: ${initResult.message}`);
+      }
+    }
+
+    const topK = Math.min(options.topK || ragConfig.search.defaultTopK, ragConfig.search.maxTopK);
+
+    try {
+      const queryEmbedding = await getEmbedding(query);
+
+      // 両コレクションで並列検索
+      const [manualResults, conversationResults] = await Promise.all([
+        searchSimilar(queryEmbedding, topK),
+        ragConfig.sharedConversations.enabled
+          ? searchSharedConversationsFromDB(queryEmbedding, topK)
+          : Promise.resolve([]),
+      ]);
+
+      // 結果をマージしてスコアでソート
+      const allResults: HybridSearchResult[] = [
+        ...manualResults.map((r) => ({
+          id: r.id,
+          text: r.text,
+          score: 1 - r.distance, // distanceをsimilarityに変換
+          source: 'car_manual' as const,
+        })),
+        ...conversationResults.map((r) => ({
+          id: r.id,
+          text: r.text,
+          score: 1 - r.distance,
+          source: 'shared_conversations' as const,
+        })),
+      ];
+
+      // スコアでソートして上位N件を返す
+      return allResults
+        .sort((a, b) => b.score - a.score)
+        .slice(0, topK);
+    } catch (error) {
+      console.error('searchAll failed:', error);
+      // フォールバック：通常の検索
+      return await this.search(query, options);
+    }
+  }
+
+  /**
+   * 統合検索結果をAI用にフォーマットする
+   */
+  formatAllResultsForAI(results: HybridSearchResult[]): string {
+    if (results.length === 0) {
+      return '関連する情報が見つかりませんでした。';
+    }
+
+    const manualResults = results.filter((r) => r.source === 'car_manual');
+    const conversationResults = results.filter((r) => r.source === 'shared_conversations');
+
+    const parts: string[] = [];
+
+    if (manualResults.length > 0) {
+      const manualFormatted = manualResults.map((result, index) => {
+        return `【取扱説明書 ${index + 1}】\n${result.text}`;
+      });
+      parts.push(manualFormatted.join('\n\n'));
+    }
+
+    if (conversationResults.length > 0) {
+      const convFormatted = conversationResults.map((result, index) => {
+        return `【過去の会話 ${index + 1}】\n${result.text}`;
+      });
+      parts.push(convFormatted.join('\n\n'));
+    }
+
+    return parts.join('\n\n---\n\n');
+  }
+
+  // Private helper methods for shared conversations
+
+  /**
+   * 質問を自動分類する
+   */
+  private categorizeQuestion(question: string): string {
+    const carKeywords = ['車', '運転', 'プリウス', 'ハイブリッド', 'エンジン', 'ブレーキ', 'ナビ', 'エアコン'];
+    const lowerQuestion = question.toLowerCase();
+
+    if (carKeywords.some((kw) => lowerQuestion.includes(kw.toLowerCase()))) {
+      return 'car_related';
+    }
+
+    return 'general';
+  }
+
+  /**
+   * 類似質問キャッシュに追加する
+   */
+  private addToSimilarityCache(question: string, answer: string, _embedding: number[]): void {
+    // キャッシュサイズ制限
+    if (this.similarityCache.size >= ragConfig.sharedConversations.similarityCacheMaxSize) {
+      // 最古のエントリを削除
+      let oldestKey: string | null = null;
+      let oldestTime = Infinity;
+
+      for (const [key, entry] of this.similarityCache.entries()) {
+        if (entry.timestamp < oldestTime) {
+          oldestTime = entry.timestamp;
+          oldestKey = key;
+        }
+      }
+
+      if (oldestKey) {
+        this.similarityCache.delete(oldestKey);
+      }
+    }
+
+    const cacheKey = this.generateCacheKey(question);
+    this.similarityCache.set(cacheKey, {
+      question,
+      answer,
+      similarity: 1.0,
+      timestamp: Date.now(),
+    });
+  }
+
+  /**
+   * キャッシュキーを生成する
+   */
+  private generateCacheKey(question: string): string {
+    // 簡易的なハッシュ（実運用では適切なハッシュ関数を使用）
+    return question.slice(0, 100).replace(/\s+/g, '_').toLowerCase();
+  }
+
+  /**
+   * 期限切れキャッシュエントリを削除する
+   */
+  private cleanupSimilarityCache(): void {
+    const now = Date.now();
+    const ttl = ragConfig.sharedConversations.similarityCacheTTL;
+
+    for (const [key, entry] of this.similarityCache.entries()) {
+      if (now - entry.timestamp > ttl) {
+        this.similarityCache.delete(key);
+      }
+    }
+  }
+
+  /**
+   * 簡易テキスト類似度計算（Jaccard係数ベース）
+   */
+  private calculateTextSimilarity(text1: string, text2: string): number {
+    const words1 = new Set(text1.toLowerCase().split(/\s+/));
+    const words2 = new Set(text2.toLowerCase().split(/\s+/));
+
+    const intersection = new Set([...words1].filter((x) => words2.has(x)));
+    const union = new Set([...words1, ...words2]);
+
+    if (union.size === 0) return 0;
+    return intersection.size / union.size;
   }
 }
 

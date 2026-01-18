@@ -163,6 +163,7 @@ export const chatApi = {
     audioData: string,
     audioFormat: string,
     conversationId: string | undefined,
+    _location: unknown, // Deprecated, kept for compatibility
     callbacks: {
       onTranscription?: (text: string) => void;
       onConversationCreated?: (id: string) => void;

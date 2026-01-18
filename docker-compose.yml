@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   postgres:
     image: postgres:14-alpine
@@ -13,6 +11,11 @@ services:
       POSTGRES_DB: team4_chat
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   chromadb:
     image: chromadb/chroma:latest
@@ -24,6 +27,34 @@ services:
       - chroma_data:/chroma/chroma
     environment:
       - ANONYMIZED_TELEMETRY=false
+
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: team4_server
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      chromadb:
+        condition: service_started
+    environment:
+      - PORT=3001
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/team4_chat?schema=public
+      - CLIENT_URL=http://localhost:3000
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8000
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
+      - GOOGLE_GENERATIVE_AI_API_KEY=${GOOGLE_GENERATIVE_AI_API_KEY:-}
+      - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY:-}
+      - QWEN_LLM_MODEL=${QWEN_LLM_MODEL:-qwen-plus}
+      - QWEN_ASR_MODEL=${QWEN_ASR_MODEL:-qwen3-asr-flash}
+      - QWEN_TTS_MODEL=${QWEN_TTS_MODEL:-qwen3-tts-flash}
+      - QWEN_TTS_VOICE=${QWEN_TTS_VOICE:-Cherry}
+      - DASHSCOPE_REGION=${DASHSCOPE_REGION:-intl}
 
   speed-detector:
     build:

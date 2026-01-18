@@ -15,6 +15,13 @@ import { qwenLLMService } from "./services/qwen-llm-service.js";
 import { qwenTTSService } from "./services/qwen-tts-service.js";
 import { localTTSService } from "./services/local-tts-service.js";
 import { qwenRealtimeService } from "./services/qwen-realtime-service.js";
+import {
+  MOCK_ENABLED,
+  MOCK_LOCATION,
+  getMockLocation,
+  getMockCarData,
+  getMockDealers,
+} from "./mock/mock-data.js";
 
 // TTS mode selection:
 // - 'browser': Use browser's Web Speech API (fastest, <50ms)
@@ -32,6 +39,28 @@ dotenv.config();
 
 // Anonymous user ID (no authentication)
 const ANONYMOUS_USER_ID = "anonymous-user";
+
+// Location interface for geolocation
+interface Location {
+  lat: number;
+  lng: number;
+}
+
+// Log mock status on startup
+if (MOCK_ENABLED) {
+  console.log(`Mock mode enabled: location=${MOCK_LOCATION.name} (${MOCK_LOCATION.lat}, ${MOCK_LOCATION.lng})`);
+}
+
+/**
+ * Get location (use mock if enabled, otherwise use provided location)
+ */
+function getLocation(providedLocation?: Location): Location | undefined {
+  const mockLoc = getMockLocation();
+  if (mockLoc) {
+    return { lat: mockLoc.lat, lng: mockLoc.lng };
+  }
+  return providedLocation;
+}
 
 // Cache for system prompt base (regenerated only when datetime changes significantly)
 let cachedSystemPromptBase: string | null = null;
@@ -129,6 +158,130 @@ function needsWebSearch(content: string): boolean {
   }
 
   return false;
+}
+
+/**
+ * Check if message needs location-based search
+ */
+function needsLocationSearch(content: string): boolean {
+  const locationKeywords = [
+    // 場所・店舗検索
+    "近く",
+    "付近",
+    "周辺",
+    "最寄り",
+    "近所",
+    "現在地",
+    "ここから",
+    "この辺",
+    // ディーラー・店舗
+    "ディーラー",
+    "販売店",
+    "店舗",
+    "ショールーム",
+    "サービスセンター",
+    "整備",
+    "修理",
+    // ガソリンスタンド
+    "ガソリン",
+    "スタンド",
+    "給油",
+    "充電",
+    "EV充電",
+    // 駐車場
+    "駐車場",
+    "パーキング",
+    "コインパーキング",
+    // 一般的な場所検索
+    "どこ",
+    "場所",
+    "行き方",
+    "道順",
+  ];
+
+  const lowerContent = content.toLowerCase();
+  return locationKeywords.some((kw) => lowerContent.includes(kw.toLowerCase()));
+}
+
+/**
+ * Build search query with location info
+ */
+function buildLocationQuery(content: string, location: Location): string {
+  // Add approximate location to search query
+  // Using coordinates for search (some search engines support this)
+  return `${content} 緯度${location.lat.toFixed(4)} 経度${location.lng.toFixed(4)} 付近`;
+}
+
+/**
+ * Check if message needs car-related web search (other cars info)
+ * Returns true if the message mentions car brands with info keywords
+ */
+function needsCarSearch(content: string): boolean {
+  // Japanese and international car brands
+  const carBrands = [
+    // Japanese brands
+    "トヨタ", "toyota", "ホンダ", "honda", "日産", "nissan", "ニッサン",
+    "マツダ", "mazda", "スバル", "subaru", "三菱", "mitsubishi",
+    "スズキ", "suzuki", "ダイハツ", "daihatsu", "レクサス", "lexus",
+    "インフィニティ", "infiniti", "アキュラ", "acura",
+    // European brands
+    "ベンツ", "メルセデス", "mercedes", "BMW", "ビーエム",
+    "アウディ", "audi", "フォルクスワーゲン", "volkswagen", "VW",
+    "ポルシェ", "porsche", "ボルボ", "volvo", "ルノー", "renault",
+    "プジョー", "peugeot", "フェラーリ", "ferrari", "ランボルギーニ", "lamborghini",
+    // American brands
+    "フォード", "ford", "シボレー", "chevrolet", "テスラ", "tesla",
+    "ジープ", "jeep", "キャデラック", "cadillac",
+    // Korean brands
+    "ヒュンダイ", "現代", "hyundai", "キア", "kia",
+    // Chinese brands
+    "BYD", "ビーワイディー",
+    // Specific car models
+    "プリウス", "prius", "カローラ", "corolla", "アクア", "aqua",
+    "フィット", "fit", "ヴェゼル", "vezel", "シビック", "civic",
+    "リーフ", "leaf", "ノート", "note", "セレナ", "serena",
+    "CX-5", "CX5", "アテンザ", "デミオ", "マツダ3", "mazda3",
+    "フォレスター", "forester", "インプレッサ", "impreza", "レヴォーグ", "levorg",
+    "N-BOX", "NBOX", "タント", "tanto", "ワゴンR", "ハスラー", "hustler",
+    "クラウン", "crown", "カムリ", "camry", "RAV4", "ハリアー", "harrier",
+    "ヤリス", "yaris", "アルファード", "alphard", "ヴォクシー", "voxy",
+  ];
+
+  // Keywords that indicate need for car information search
+  const carInfoKeywords = [
+    // Spec & comparison
+    "燃費", "価格", "値段", "スペック", "仕様", "性能",
+    "比較", "違い", "どっち", "どちら", "vs",
+    // Reviews & ratings
+    "評価", "評判", "レビュー", "口コミ", "クチコミ",
+    "おすすめ", "オススメ", "人気", "ランキング",
+    // Purchase related
+    "値引き", "中古", "新車", "見積もり", "下取り",
+    "リセールバリュー", "残価", "買い替え",
+    // Features
+    "装備", "オプション", "グレード", "カラー", "色",
+    "サイズ", "寸法", "荷室", "乗り心地", "静粛性",
+    // Safety & tech
+    "安全", "衝突", "自動ブレーキ", "運転支援", "ADAS",
+    "電気自動車", "EV", "ハイブリッド", "PHV", "PHEV",
+    // Maintenance
+    "維持費", "保険", "税金", "車検",
+  ];
+
+  const lowerContent = content.toLowerCase();
+
+  // Check if content mentions any car brand
+  const hasBrand = carBrands.some((brand) =>
+    lowerContent.includes(brand.toLowerCase())
+  );
+
+  // Check if content has car info keywords
+  const hasInfoKeyword = carInfoKeywords.some((kw) =>
+    lowerContent.includes(kw.toLowerCase())
+  );
+
+  // Trigger search if both brand and info keyword are present
+  return hasBrand && hasInfoKeyword;
 }
 
 /**
@@ -253,7 +406,10 @@ app.get("/api/chat/conversations/:id", async (c) => {
       return c.json({ error: "Conversation not found" }, 404);
     }
 
-    return c.json({ conversation });
+    // メッセージも取得
+    const messages = await chatService.getMessages(id);
+
+    return c.json({ conversation: { ...conversation, messages } });
   } catch (error) {
     console.error("Error fetching conversation:", error);
     return c.json({ error: "Failed to fetch conversation" }, 500);
@@ -265,9 +421,11 @@ app.post("/api/chat/conversations/:id/messages/stream", async (c) => {
   const id = c.req.param("id");
 
   let content: string;
+  let location: Location | undefined;
   try {
     const body = await c.req.json();
     content = body.content;
+    location = body.location;
   } catch {
     return c.json({ error: "Invalid request body" }, 400);
   }
@@ -291,21 +449,76 @@ app.post("/api/chat/conversations/:id/messages/stream", async (c) => {
       // OPTIMIZATION: Start building system prompt immediately (cached)
       let systemPrompt = buildSystemPrompt();
 
+      // Get effective location (use mock if enabled)
+      const effectiveLocation = getLocation(location);
+
       // OPTIMIZATION: Determine if web search is needed early
-      const shouldSearch = needsWebSearch(content);
+      // Also check for car-related searches (e.g., "ホンダ フィットの燃費は？")
+      const shouldSearch = needsWebSearch(content) || needsCarSearch(content);
+      const shouldLocationSearch = effectiveLocation && needsLocationSearch(content);
+
+      // Log car search trigger
+      if (needsCarSearch(content)) {
+        console.log(`Car search triggered: ${content}`);
+      }
+
+      // Build search query with location if available
+      const searchQuery = shouldLocationSearch
+        ? buildLocationQuery(content, effectiveLocation!)
+        : content;
+
+      // Log location-based search
+      if (shouldLocationSearch) {
+        console.log(`Location-based search: ${searchQuery}`);
+      }
+
+      // Check similarity cache first (for cached answers from shared knowledge)
+      const cacheHit = await ragService.checkSimilarityCache(content);
+      if (cacheHit) {
+        console.log(`Similarity cache hit! Returning cached answer.`);
+        // Stream cached answer
+        await stream.writeSSE({
+          data: JSON.stringify({ type: "text", content: cacheHit.answer }),
+        });
+        await stream.writeSSE({
+          data: JSON.stringify({
+            type: "done",
+            content: cacheHit.answer,
+            cached: true,
+          }),
+        });
+        // Save messages in background
+        chatService.addMessage(id, "user", content).catch(console.error);
+        chatService.addMessage(id, "assistant", cacheHit.answer).catch(console.error);
+        return;
+      }
 
       // OPTIMIZATION: Run parallel operations
       // - Get existing messages (for context)
       // - Save user message (fire-and-forget pattern for non-blocking)
       // - Start web search if needed (parallel with message operations)
-      const [messages, searchResult] = await Promise.all([
+      // - Always search shared knowledge (past conversations)
+      // - Search car manual only if car-related keywords
+      const [messages, searchResult, sharedKnowledgeResults, carManualResults] = await Promise.all([
         chatService.getMessages(id),
         shouldSearch
-          ? searchWeb(content).catch((err) => {
+          ? searchWeb(searchQuery).catch((err) => {
               console.error("Search failed:", err);
               return { success: false, results: [] };
             })
           : Promise.resolve({ success: false, results: [] }),
+        // Always search shared knowledge (past conversations)
+        ragService.searchSharedConversations(content, { topK: 3 }).catch((err) => {
+          console.error("Shared knowledge search failed:", err);
+          return [];
+        }),
+        // Search car manual only if car-related
+        needsRAGSearch(content)
+          ? ragService.search(content, { topK: 3 }).catch((err) => {
+              console.error("Car manual search failed:", err);
+              return [];
+            })
+          : Promise.resolve([]),
         // Fire-and-forget: save user message without blocking
         chatService.addMessage(id, "user", content).catch((err) => {
           console.error("Failed to save user message:", err);
@@ -317,6 +530,22 @@ app.post("/api/chat/conversations/:id/messages/stream", async (c) => {
         const searchInfo = formatSearchResultsForAI(searchResult);
         systemPrompt += `\n\n## Web検索結果\n${searchInfo}`;
         console.log("Search results added to context");
+      }
+
+      // Add shared knowledge (past conversations) to prompt if available
+      if (sharedKnowledgeResults.length > 0) {
+        const sharedContext = sharedKnowledgeResults.map((r, i) =>
+          `【過去の会話 ${i + 1}】\n${r.text}`
+        ).join('\n\n');
+        systemPrompt += `\n\n## 過去の会話からの参考情報\n${sharedContext}`;
+        console.log(`Shared knowledge results added to context (${sharedKnowledgeResults.length} items)`);
+      }
+
+      // Add car manual results to prompt if available
+      if (carManualResults.length > 0) {
+        const manualContext = ragService.formatResultsForAI(carManualResults);
+        systemPrompt += `\n\n## プリウス取扱説明書からの参考情報\n${manualContext}`;
+        console.log("Car manual results added to context");
       }
 
       // Build AI messages with current user message included
@@ -345,7 +574,7 @@ app.post("/api/chat/conversations/:id/messages/stream", async (c) => {
       const postStreamOps = async () => {
         try {
           // Save AI response
-          await chatService.addMessage(id, "assistant", aiResponse);
+          const savedMessage = await chatService.addMessage(id, "assistant", aiResponse);
 
           // Update conversation title if it's the first user message
           const userMessages = messages.filter(
@@ -355,6 +584,20 @@ app.post("/api/chat/conversations/:id/messages/stream", async (c) => {
             const title =
               content.slice(0, 50) + (content.length > 50 ? "..." : "");
             await chatService.updateTitle(id, title);
+          }
+
+          // Register Q&A pair to RAG (for shared knowledge)
+          if (savedMessage) {
+            const lastUserMessage = messages.filter((m: { role: string }) => m.role === "user").pop();
+            ragService.addConversationToRAG({
+              conversationId: id,
+              questionId: lastUserMessage?.id || `user_${Date.now()}`,
+              answerId: savedMessage.id,
+              question: content,
+              answer: aiResponse,
+            }).catch((err) => {
+              console.error("Failed to add conversation to RAG:", err);
+            });
           }
         } catch (err) {
           console.error("Post-stream operation failed:", err);
@@ -549,6 +792,7 @@ app.post("/api/voice/chat", async (c) => {
   let audioFormat: string;
   let conversationId: string | undefined;
   let ttsMode: string;
+  let location: Location | undefined;
 
   try {
     const body = await c.req.json();
@@ -557,6 +801,7 @@ app.post("/api/voice/chat", async (c) => {
     conversationId = body.conversationId;
     // TTS mode from request, fallback to server default
     ttsMode = body.ttsMode || TTS_MODE;
+    location = body.location;
   } catch {
     return c.json({ error: "Invalid request body" }, 400);
   }
@@ -615,19 +860,53 @@ app.post("/api/voice/chat", async (c) => {
       let systemPrompt = buildSystemPrompt();
       const existingMessages = await chatService.getMessages(convId);
 
-      // RAG検索（車関連の質問の場合）
-      if (needsRAGSearch(userText)) {
-        console.log("RAG search needed for:", userText);
-        try {
-          const ragResults = await ragService.search(userText, { topK: 3 });
-          if (ragResults.length > 0) {
-            const ragContext = ragService.formatResultsForAI(ragResults);
-            systemPrompt += `\n\n## プリウス取扱説明書からの参考情報\n以下の情報を参考にして回答してください：\n${ragContext}`;
-            console.log("RAG results added to context");
-          }
-        } catch (err) {
-          console.error("RAG search failed:", err);
-        }
+      // Get effective location (use mock if enabled)
+      const effectiveLocation = getLocation(location);
+
+      // Check if location-based search is needed
+      const shouldLocationSearch = effectiveLocation && needsLocationSearch(userText);
+      if (shouldLocationSearch) {
+        const locationQuery = buildLocationQuery(userText, effectiveLocation);
+        console.log(`Voice: Location-based search: ${locationQuery}`);
+        // Add location info to system prompt
+        systemPrompt += `\n\n現在地: 緯度${effectiveLocation.lat.toFixed(4)}, 経度${effectiveLocation.lng.toFixed(4)}`;
+      }
+
+      // Check if car search is needed
+      if (needsCarSearch(userText)) {
+        console.log(`Voice: Car search triggered: ${userText}`);
+      }
+
+      // 並列でRAG検索を実行
+      // - 共有ナレッジは常に検索（過去の会話）
+      // - 取扱説明書は車関連キーワードがある場合のみ
+      const [sharedKnowledgeResults, carManualResults] = await Promise.all([
+        ragService.searchSharedConversations(userText, { topK: 3 }).catch((err) => {
+          console.error("Shared knowledge search failed:", err);
+          return [];
+        }),
+        needsRAGSearch(userText)
+          ? ragService.search(userText, { topK: 3 }).catch((err) => {
+              console.error("Car manual search failed:", err);
+              return [];
+            })
+          : Promise.resolve([]),
+      ]);
+
+      // 過去の会話をコンテキストに追加
+      if (sharedKnowledgeResults.length > 0) {
+        const sharedContext = sharedKnowledgeResults.map((r, i) =>
+          `【過去の会話 ${i + 1}】\n${r.text}`
+        ).join('\n\n');
+        systemPrompt += `\n\n## 過去の会話からの参考情報\n${sharedContext}`;
+        console.log(`Shared knowledge results added to context (${sharedKnowledgeResults.length} items)`);
+      }
+
+      // 取扱説明書をコンテキストに追加
+      if (carManualResults.length > 0) {
+        const manualContext = ragService.formatResultsForAI(carManualResults);
+        systemPrompt += `\n\n## プリウス取扱説明書からの参考情報\n${manualContext}`;
+        console.log("Car manual results added to context");
       }
 
       const aiMessages = [
@@ -814,10 +1093,26 @@ app.post("/api/voice/chat", async (c) => {
         fullContent || "申し訳ありません、応答を生成できませんでした。";
       console.log("LLM generation completed");
 
-      // Save AI response (fire-and-forget)
-      chatService.addMessage(convId, "assistant", aiResponse).catch((err) => {
-        console.error("Failed to save AI message:", err);
-      });
+      // Save AI response and register to RAG (fire-and-forget)
+      chatService.addMessage(convId, "assistant", aiResponse)
+        .then((savedMessage) => {
+          // Register Q&A pair to RAG (for shared knowledge)
+          if (savedMessage) {
+            const lastUserMessage = existingMessages.filter((m: { role: string }) => m.role === "user").pop();
+            ragService.addConversationToRAG({
+              conversationId: convId,
+              questionId: lastUserMessage?.id || `user_${Date.now()}`,
+              answerId: savedMessage.id,
+              question: userText,
+              answer: aiResponse,
+            }).catch((err) => {
+              console.error("Failed to add conversation to RAG:", err);
+            });
+          }
+        })
+        .catch((err) => {
+          console.error("Failed to save AI message:", err);
+        });
 
       // Update conversation title if first message
       const userMessages = existingMessages.filter(

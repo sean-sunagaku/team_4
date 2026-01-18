@@ -18,8 +18,21 @@ export const ragConfig = {
 
   // ChromaDB Configuration
   chromadb: {
-    url: process.env.CHROMA_URL || 'http://localhost:8100',
+    url: process.env.CHROMA_URL ||
+         (process.env.CHROMA_HOST
+           ? `http://${process.env.CHROMA_HOST}:${process.env.CHROMA_PORT || 8000}`
+           : 'http://localhost:8100'),
     collectionName: 'car_manual',
+    sharedConversationsCollection: 'shared_conversations',
+  },
+
+  // Shared Conversations Configuration
+  sharedConversations: {
+    enabled: true,
+    similarityCacheEnabled: true,
+    similarityCacheTTL: 600000, // 10 minutes
+    similarityCacheMaxSize: 100,
+    similarityThreshold: 0.90, // 90% similarity for cache hit
   },
 
   // Text Splitting Configuration

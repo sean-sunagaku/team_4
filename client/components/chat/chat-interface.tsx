@@ -86,6 +86,7 @@ export function ChatInterface() {
   // TTS mode: 'browser' (Web Speech API, fast) or 'qwen' (Qwen TTS API, high quality)
   const [ttsMode, setTtsMode] = useState<'browser' | 'qwen'>('browser');
   const ttsModeRef = useRef<'browser' | 'qwen'>('browser');
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -1034,7 +1035,7 @@ export function ChatInterface() {
       const audioData = await blobToBase64(audioBlob);
       let convId = currentConversation?.id;
 
-      await chatApi.sendVoiceMessage(audioData, "webm", convId, {
+      await chatApi.sendVoiceMessage(audioData, "webm", convId, null, {
         onTranscription: (text) => {
           // Add user message to UI
           const userMessage: Message = {
@@ -1285,7 +1286,7 @@ export function ChatInterface() {
         },
         (error) => {
           console.error("Streaming error:", error);
-        },
+        }
       );
     } catch (error) {
       console.error("Failed to send message:", error);
