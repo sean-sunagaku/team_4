@@ -107,7 +107,8 @@ curl -X POST http://localhost:3001/api/rag/search \
   -d '{
     "query": "エンジンの始動方法",
     "topK": 10,
-    "useHybrid": true
+    "useHybrid": true,
+    "vectorWeight": 0.7
   }'
 ```
 
@@ -154,6 +155,7 @@ curl -X POST http://localhost:3001/api/rag/reindex
 | `query` | string | (必須) | 検索クエリ |
 | `topK` | number | 5 | 返す結果数（最大20） |
 | `useHybrid` | boolean | true | ハイブリッド検索を使用するか |
+| `vectorWeight` | number | 0.7 | ベクトル検索の重み（0〜1、残りがキーワード検索の重み） |
 
 ## 検索方式：ハイブリッド検索
 
@@ -166,12 +168,28 @@ curl -X POST http://localhost:3001/api/rag/reindex
 
 両方を組み合わせることで、精度の高い検索結果を実現します。
 
+### 検索重みの調整
+
+`vectorWeight` パラメータでベクトル検索とキーワード検索のバランスを調整できます：
+
+- `vectorWeight: 1.0` - ベクトル検索のみ（意味重視）
+- `vectorWeight: 0.7` - デフォルト（ベクトル70%、キーワード30%）
+- `vectorWeight: 0.5` - バランス型
+- `vectorWeight: 0.0` - キーワード検索のみ（完全一致重視）
+
 ## 技術スタック
 
 - **フレームワーク**: Hono + Bun
 - **Embedding**: Qwen text-embedding-v4 (DashScope API)
+  - 次元数: 1024
+  - バッチサイズ: 10
+  - キャッシュ: 5分TTL、最大100エントリ
 - **ベクトルDB**: ChromaDB
+  - コレクション名: `car_manual`
 - **キーワード検索**: BM25アルゴリズム
+- **テキスト分割**:
+  - チャンクサイズ: 300文字
+  - オーバーラップ: 100文字
 
 ## ファイル構成
 
@@ -184,7 +202,7 @@ server/
 │   ├── rag/
 │   │   ├── text-preprocessor.ts  # テキスト前処理
 │   │   ├── text-splitter.ts      # テキスト分割
-│   │   ├── embedding.ts          # Embedding生成
+│   │   ├── embedding.ts          # Embedding生成（キャッシュ付き）
 │   │   ├── keyword-search.ts     # BM25キーワード検索
 │   │   └── vectordb.ts           # ChromaDB操作
 │   └── services/
@@ -192,6 +210,50 @@ server/
 ├── docs/
 │   └── RAG-API.md            # このドキュメント
 └── .env
+```
+
+## 設定オプション
+
+`src/config/rag.config.ts` で以下の設定をカスタマイズできます：
+
+```typescript
+export const ragConfig = {
+  // DashScope API設定
+  dashscope: {
+    apiKey: process.env.DASHSCOPE_API_KEY,
+    baseURL: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
+  },
+
+  // Embedding設定
+  embedding: {
+    model: 'text-embedding-v4',
+    dimensions: 1024,
+    batchSize: 10,
+  },
+
+  // ChromaDB設定
+  chromadb: {
+    url: process.env.CHROMA_URL || 'http://localhost:8100',
+    collectionName: 'car_manual',
+  },
+
+  // テキスト分割設定
+  textSplitter: {
+    chunkSize: 300,
+    chunkOverlap: 100,
+    usePreprocessing: true,
+  },
+
+  // 検索設定
+  search: {
+    defaultTopK: 5,
+    maxTopK: 20,
+    hybridSearchWeight: 0.7,
+  },
+
+  // データファイルパス
+  dataFile: process.env.RAG_DATA_FILE,
+};
 ```
 
 ## エラーハンドリング

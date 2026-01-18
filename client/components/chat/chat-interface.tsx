@@ -83,6 +83,9 @@ export function ChatInterface() {
   );
   const [autoSpeak, setAutoSpeak] = useState(true);
   const autoSpeakRef = useRef(true);
+  // TTS mode: 'browser' (Web Speech API, fast) or 'qwen' (Qwen TTS API, high quality)
+  const [ttsMode, setTtsMode] = useState<'browser' | 'qwen'>('browser');
+  const ttsModeRef = useRef<'browser' | 'qwen'>('browser');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -126,6 +129,10 @@ export function ChatInterface() {
     autoSpeakRef.current = autoSpeak;
   }, [autoSpeak]);
 
+  useEffect(() => {
+    ttsModeRef.current = ttsMode;
+  }, [ttsMode]);
+
   // Text-to-speech function
   const speakText = (text: string, messageId: string) => {
     // Stop any current speech
@@ -161,10 +168,15 @@ export function ChatInterface() {
     setSpeakingMessageId(null);
   };
 
-  // Audio queue for streaming TTS
+  // Audio queue for streaming TTS (URL-based, e.g., Qwen TTS)
   const audioQueueRef = useRef<{ url: string; index: number }[]>([]);
   const isPlayingRef = useRef(false);
   const nextExpectedIndexRef = useRef(0);
+
+  // Browser TTS queue (Web Speech API)
+  const browserTtsQueueRef = useRef<{ text: string; index: number }[]>([]);
+  const isBrowserSpeakingRef = useRef(false);
+  const nextBrowserTtsIndexRef = useRef(0);
 
   // Play next audio in queue
   const playNextInQueue = () => {
@@ -234,6 +246,71 @@ export function ChatInterface() {
       audioPlayerRef.current.pause();
       audioPlayerRef.current = null;
     }
+    // Also reset browser TTS queue
+    browserTtsQueueRef.current = [];
+    nextBrowserTtsIndexRef.current = 0;
+    isBrowserSpeakingRef.current = false;
+    window.speechSynthesis.cancel();
+  };
+
+  // Browser TTS: speak next text in queue
+  const speakNextBrowserTts = () => {
+    if (isBrowserSpeakingRef.current) return;
+
+    // Sort queue by index and find next expected text
+    browserTtsQueueRef.current.sort((a, b) => a.index - b.index);
+
+    const nextItem = browserTtsQueueRef.current.find(
+      (item) => item.index === nextBrowserTtsIndexRef.current,
+    );
+
+    if (nextItem) {
+      isBrowserSpeakingRef.current = true;
+      setIsAudioPlaying(true);
+      browserTtsQueueRef.current = browserTtsQueueRef.current.filter(
+        (item) => item.index !== nextItem.index,
+      );
+
+      const utterance = new SpeechSynthesisUtterance(nextItem.text);
+      utterance.lang = "ja-JP";
+      utterance.rate = 1.0;
+      utterance.pitch = 1.0;
+
+      // Find Japanese voice if available
+      const voices = window.speechSynthesis.getVoices();
+      const japaneseVoice = voices.find((voice) => voice.lang.includes("ja"));
+      if (japaneseVoice) {
+        utterance.voice = japaneseVoice;
+      }
+
+      utterance.onend = () => {
+        isBrowserSpeakingRef.current = false;
+        nextBrowserTtsIndexRef.current++;
+        // Check if more text in queue
+        if (browserTtsQueueRef.current.length === 0) {
+          setIsAudioPlaying(false);
+        }
+        speakNextBrowserTts(); // Speak next
+      };
+
+      utterance.onerror = () => {
+        isBrowserSpeakingRef.current = false;
+        nextBrowserTtsIndexRef.current++;
+        if (browserTtsQueueRef.current.length === 0) {
+          setIsAudioPlaying(false);
+        }
+        speakNextBrowserTts(); // Skip and speak next
+      };
+
+      window.speechSynthesis.speak(utterance);
+      console.log(`Browser TTS[${nextItem.index}]: "${nextItem.text.slice(0, 30)}..."`);
+    }
+  };
+
+  // Add text to browser TTS queue
+  const queueBrowserTts = (text: string, index: number) => {
+    browserTtsQueueRef.current.push({ text, index });
+    speakNextBrowserTts();
   };
 
   // Stop audio playback only (keep processing)
@@ -986,6 +1063,13 @@ export function ChatInterface() {
             queueAudio(url, index ?? 0);
           }
         },
+        onTtsText: (text, index) => {
+          // Browser TTS: use Web Speech API for low-latency speech
+          console.log(`Browser TTS[${index}]:`, text.slice(0, 30));
+          if (autoSpeakRef.current) {
+            queueBrowserTts(text, index ?? 0);
+          }
+        },
         onDone: (content, responseConvId) => {
           const newMessageId = Date.now().toString();
           setMessages((prev) => [
@@ -1008,7 +1092,7 @@ export function ChatInterface() {
             alert(`音声チャットエラー: ${error}`);
           }
         },
-      });
+      }, ttsModeRef.current);
     } catch (error) {
       // Check if this was an intentional abort
       if (error instanceof Error && error.name === "AbortError") {
@@ -1404,6 +1488,18 @@ export function ChatInterface() {
               <VolumeX className="h-3.5 w-3.5" />
             )}
             <span>{autoSpeak ? "Auto" : "Off"}</span>
+          </button>
+          {/* TTS Mode Toggle */}
+          <button
+            onClick={() => setTtsMode(ttsMode === 'browser' ? 'qwen' : 'browser')}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs transition-colors ${
+              ttsMode === 'browser'
+                ? "bg-green-600 text-white"
+                : "bg-blue-600 text-white"
+            }`}
+            title={ttsMode === 'browser' ? "Browser TTS (高速)" : "Qwen TTS (高品質)"}
+          >
+            <span>{ttsMode === 'browser' ? "🚀 高速" : "🎵 高品質"}</span>
           </button>
         </div>
 

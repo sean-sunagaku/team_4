@@ -26,10 +26,12 @@ export const qwenConfig = {
   },
 
   // LLM (Large Language Model) Configuration
+  // qwen-turbo: 低レイテンシ向け高速モデル（200-400ms短縮）
+  // qwen-plus: 標準モデル（品質重視）
   llm: {
-    model: process.env.QWEN_LLM_MODEL || 'qwen-plus',
+    model: process.env.QWEN_LLM_MODEL || 'qwen-turbo',
     temperature: 0.7,
-    maxTokens: 1024,
+    maxTokens: 512, // 応答長を短縮してレイテンシ削減
   },
 
   // TTS (Text-to-Speech) Configuration
