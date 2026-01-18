@@ -13,9 +13,10 @@ type VoiceState = 'idle' | 'recording' | 'processing' | 'speaking'
 
 interface AIChatButtonProps {
   autoStart?: boolean
+  placement?: 'floating' | 'inline'
 }
 
-const AIChatButton = ({ autoStart = false }: AIChatButtonProps) => {
+const AIChatButton = ({ autoStart = false, placement = 'floating' }: AIChatButtonProps) => {
   const [voiceState, setVoiceState] = useState<VoiceState>('idle')
 
   // Refs
@@ -296,7 +297,14 @@ const AIChatButton = ({ autoStart = false }: AIChatButtonProps) => {
   }, [voiceState, startRecording, resetAudioQueue])
 
   return (
-    <div className="ai-chat-button-container">
+    <div
+      className={[
+        'ai-chat-button-container',
+        placement === 'inline' ? 'ai-chat-button-container--inline' : '',
+      ]
+        .filter(Boolean)
+        .join(' ')}
+    >
       <button
         onClick={handleClick}
         className={`ai-chat-button ai-chat-button--${voiceState}`}
