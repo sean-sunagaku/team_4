@@ -142,10 +142,14 @@
 /* 右側 Google Maps ナビボタンコンテナ */
 .map-nav-button-container {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   height: 100vh;
   background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  gap: 20px;
+  padding: 32px 20px;
+  box-sizing: border-box;
 }
 
 .google-maps-nav-button {
@@ -168,6 +172,73 @@
 
 .google-maps-nav-button:active {
   transform: scale(0.98);
+}
+
+/* QR表示 */
+.qr-section {
+  width: min(520px, 92vw);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  padding: 16px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
+}
+
+.qr-section-title {
+  color: rgba(255, 255, 255, 0.92);
+  font-weight: 700;
+  font-size: 0.95rem;
+  margin-bottom: 10px;
+  letter-spacing: 0.02em;
+}
+
+.qr-url-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: #fff;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 0.95rem;
+  outline: none;
+}
+
+.qr-url-input::placeholder {
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.qr-url-input:focus {
+  border-color: rgba(66, 133, 244, 0.65);
+  box-shadow: 0 0 0 3px rgba(66, 133, 244, 0.15);
+}
+
+.qr-code-and-link {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.qr-code-wrapper {
+  background: #ffffff;
+  border-radius: 14px;
+  padding: 10px;
+}
+
+.qr-open-link {
+  color: rgba(255, 255, 255, 0.9);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.95rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.25);
+  padding-bottom: 2px;
+}
+
+.qr-open-link:hover {
+  color: #ffffff;
+  border-bottom-color: rgba(255, 255, 255, 0.55);
 }
 
 /* ミッションリストのスクロールバースタイル */
