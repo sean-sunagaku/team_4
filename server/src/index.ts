@@ -13,7 +13,17 @@ import { ragService } from "./services/rag-service.js";
 import { qwenASRService } from "./services/qwen-asr-service.js";
 import { qwenLLMService } from "./services/qwen-llm-service.js";
 import { qwenTTSService } from "./services/qwen-tts-service.js";
+import { localTTSService } from "./services/local-tts-service.js";
 import { qwenRealtimeService } from "./services/qwen-realtime-service.js";
+
+// TTS mode selection:
+// - 'browser': Use browser's Web Speech API (fastest, <50ms)
+// - 'local': Use Edge TTS (50-200ms) - currently not working due to API restrictions
+// - 'qwen': Use Qwen TTS API (500-2000ms)
+const TTS_MODE = process.env.TTS_MODE || 'browser'; // Default: browser TTS
+const USE_BROWSER_TTS = TTS_MODE === 'browser';
+const USE_LOCAL_TTS = TTS_MODE === 'local';
+const ttsService = USE_LOCAL_TTS ? localTTSService : qwenTTSService;
 import WebSocket from "ws";
 import { routeService } from "./services/route-service.js";
 import { RouteSuggestRequestSchema, type RouteSuggestRequest } from "./types/route.types.js";
@@ -41,28 +51,10 @@ function buildSystemPrompt(): string {
 
   const datetime = getCurrentDateTime();
 
-  cachedSystemPromptBase = `あなたは親切で知識豊富なAIアシスタントです。
-
-## 現在の日時情報
-- 現在の日時: ${datetime.fullDate} ${datetime.time}
-- 今日の曜日: ${datetime.dayOfWeek}
-- 今日の日付: ${datetime.year}${datetime.month}${datetime.day}
-
-## 重要なルール
-
-### 1. 日時に関する質問
-「今日は何曜日？」「今日の日付は？」などの質問には、上記の「現在の日時情報」を参照して正確に回答してください。
-
-### 2. 会話の流れについて
-- ユーザーとの過去の会話内容を覚えておいてください
-- 前の発言を踏まえて、文脈に沿った回答をしてください
-- ユーザーが以前言及した情報（名前、好み、状況など）を覚えておいてください
-- 「さっきの」「それ」「あれ」などの指示語は、会話履歴から適切に解釈してください
-
-### 3. 回答スタイル
-- 日本語で回答してください
-- 親切で分かりやすい説明を心がけてください
-- 必要に応じて具体例を挙げてください`;
+  // 簡潔化されたシステムプロンプト（レイテンシ削減のため）
+  cachedSystemPromptBase = `親切なAIアシスタントです。日本語で簡潔に回答します。
+現在: ${datetime.fullDate} ${datetime.time}（${datetime.dayOfWeek}）
+会話履歴を踏まえて回答してください。`;
 
   lastPromptCacheTime = now;
   return cachedSystemPromptBase;
@@ -556,12 +548,15 @@ app.post("/api/voice/chat", async (c) => {
   let audioData: string;
   let audioFormat: string;
   let conversationId: string | undefined;
+  let ttsMode: string;
 
   try {
     const body = await c.req.json();
     audioData = body.audioData;
     audioFormat = body.audioFormat || "webm";
     conversationId = body.conversationId;
+    // TTS mode from request, fallback to server default
+    ttsMode = body.ttsMode || TTS_MODE;
   } catch {
     return c.json({ error: "Invalid request body" }, 400);
   }
@@ -569,6 +564,9 @@ app.post("/api/voice/chat", async (c) => {
   if (!audioData) {
     return c.json({ error: "Audio data is required" }, 400);
   }
+
+  // Determine TTS mode for this request
+  const useBrowserTts = ttsMode === 'browser';
 
   return streamSSE(c, async (stream) => {
     try {
@@ -699,7 +697,21 @@ app.post("/api/voice/chat", async (c) => {
         if (!textOnly) return;
         console.log(`TTS[${index}]: "${textOnly.slice(0, 30)}..."`);
 
-        const ttsResult = await qwenTTSService.synthesizeSpeech(textOnly);
+        // Browser TTS mode: send text directly for client-side speech synthesis
+        if (useBrowserTts) {
+          await stream.writeSSE({
+            data: JSON.stringify({
+              type: "tts_text",
+              text: textOnly,
+              index: index,
+            }),
+          });
+          console.log(`TTS[${index}] sent to browser`);
+          return;
+        }
+
+        // Server-side TTS: synthesize audio and send URL
+        const ttsResult = await ttsService.synthesizeSpeech(textOnly);
         if (ttsResult.success && ttsResult.audioUrl) {
           await stream.writeSSE({
             data: JSON.stringify({
@@ -937,7 +949,7 @@ app.post("/api/voice/synthesize", async (c) => {
       return c.json({ error: "Text is required" }, 400);
     }
 
-    const result = await qwenTTSService.synthesizeSpeech(text, voice);
+    const result = await ttsService.synthesizeSpeech(text, voice);
 
     if (!result.success) {
       return c.json({ error: result.error }, 500);
@@ -1076,3 +1088,9 @@ const server = Bun.serve({
 });
 
 console.log(`Server running on port ${PORT}`);
+const ttsInfo = USE_BROWSER_TTS
+  ? 'Browser (Web Speech API) - <50ms'
+  : USE_LOCAL_TTS
+    ? 'Local (Edge TTS) - 50-200ms'
+    : 'Qwen API - 500-2000ms';
+console.log(`TTS Service: ${ttsInfo} per sentence`);
