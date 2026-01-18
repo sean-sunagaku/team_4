@@ -1,6 +1,6 @@
 # 低遅延アーキテクチャ設計
 
-このドキュメントでは、Team 4 Chat Serverで実装されている低遅延化の工夫について説明します。
+このドキュメントでは、Team 4 Chat Serverで実装されている音声チャットの低遅延化について説明します。
 
 ## 概要
 
@@ -9,234 +9,216 @@
 | ランタイム | Bun |
 | フレームワーク | Hono |
 | データベース | SQLite + Prisma |
-| AI | Google Gemini 2.0 Flash |
+| 音声認識 (ASR) | Qwen3 ASR Flash / Realtime |
+| 言語モデル (LLM) | Qwen Turbo |
+| 音声合成 (TTS) | Qwen3 TTS Flash |
+| ベクトルDB | ChromaDB |
 
 ---
 
-## 1. ランタイム最適化
+## 1. 音声チャットパイプライン
 
-### Bun の採用
-
-Node.js から Bun へ移行することで、以下の改善を実現しています。
+### 全体フロー
 
 ```
-Node.js vs Bun 比較:
-├── 起動速度: 4倍高速
-├── HTTP処理: 2-3倍高速
-├── TypeScript: ネイティブ実行（トランスパイル不要）
-└── メモリ使用量: 約30%削減
+音声入力 → ASR → LLM → TTS → 音声出力
+   │         │      │      │
+   ▼         ▼      ▼      ▼
+  録音    テキスト化  応答生成  音声合成
 ```
 
-**実装箇所:** `package.json`
-```json
-{
-  "scripts": {
-    "dev": "bun run --watch src/index.ts",
-    "start": "bun run src/index.ts"
-  }
-}
-```
+### 低遅延を実現する4つの最適化
 
-### Hono フレームワーク
+1. **高速モデルの選定**
+2. **ストリーミング処理**
+3. **First Sentence Prefetch（最初の文の先行処理）**
+4. **並列処理とFire-and-Forget**
 
-Express から Hono へ移行することで、軽量かつ高速なHTTP処理を実現しています。
+---
 
-- **バンドルサイズ**: Express (~2MB) → Hono (~14KB)
-- **リクエスト処理**: Webstandard準拠で高速
-- **SSEストリーミング**: `streamSSE` による効率的な実装
+## 2. 高速モデルの選定
 
-**実装箇所:** `src/index.ts`
+### Qwen Voice Services
+
+すべてのAI処理に高速版（Flash/Turbo）モデルを採用しています。
+
+**実装箇所:** `src/config/qwen.config.ts`
+
 ```typescript
-import { Hono } from "hono";
-import { streamSSE } from "hono/streaming";
-
-const app = new Hono();
-
-// SSEストリーミング
-app.post("/api/chat/.../stream", async (c) => {
-  return streamSSE(c, async (stream) => {
-    // 効率的なストリーミング処理
-  });
-});
-```
-
----
-
-## 2. データベース最適化
-
-### SELECT フィールド絞り込み
-
-不要なフィールドを取得しないことで、データ転送量とパース時間を削減しています。
-
-**実装箇所:** `src/services/chat-service.js`
-
-```javascript
-// Before: 全フィールド取得（遅い）
-await prisma.message.findMany({
-  where: { conversationId },
-});
-
-// After: 必要なフィールドのみ（高速）
-await prisma.message.findMany({
-  where: { conversationId },
-  select: {
-    role: true,
-    content: true,
+export const qwenConfig = {
+  // ASR: 高速音声認識モデル
+  asr: {
+    model: 'qwen3-asr-flash',
   },
-});
-```
 
-**効果:** 約20-30%のクエリ時間短縮
+  // LLM: 低レイテンシ向け高速モデル
+  llm: {
+    model: 'qwen-turbo',      // qwen-plus比で200-400ms短縮
+    maxTokens: 512,           // 応答長を制限してレイテンシ削減
+  },
 
-### トランザクションによるDB往復削減
-
-複数のDB操作を1回のトランザクションにまとめることで、ネットワーク往復を削減しています。
-
-```javascript
-// Before: 2回のDB往復
-const message = await prisma.message.create({...});
-await prisma.conversation.update({...});
-
-// After: 1回のDB往復
-await prisma.$transaction([
-  prisma.message.create({...}),
-  prisma.conversation.update({...}),
-]);
-```
-
-**効果:** 約10-20msの短縮
-
-### 事前接続（Pre-connect）
-
-サーバー起動時にDB接続を確立し、初回リクエストのコールドスタートを回避しています。
-
-**実装箇所:** `src/lib/db.js`
-
-```javascript
-const prisma = new PrismaClient({
-  log: process.env.NODE_ENV === "production" ? [] : ["warn", "error"],
-});
-
-// 起動時に接続確立
-prisma.$connect();
-```
-
-**効果:** 初回リクエスト 50-100ms短縮
-
----
-
-## 3. AI応答最適化
-
-### maxTokens 削減
-
-応答の最大トークン数を必要十分な値に設定することで、AIモデルの初動を高速化しています。
-
-**実装箇所:** `src/config/google.config.js`
-
-```javascript
-export const config = {
-  maxTokens: 1024,  // 4096から削減
+  // TTS: 高速音声合成モデル
+  tts: {
+    model: 'qwen3-tts-flash',
+  },
 };
 ```
 
-**効果:** AI初動 50-150ms短縮
-
-### 軽量ストリーム使用
-
-`fullStream` ではなく `textStream` を使用することで、不要なメタデータ処理を削減しています。
-
-**実装箇所:** `src/services/ai-service.js`
-
-```javascript
-// Before: fullStream（重い）
-for await (const part of result.fullStream) {
-  if (part.type === "text-delta") {
-    // 型チェックが必要
-  }
-}
-
-// After: textStream（軽量）
-for await (const chunk of result.textStream) {
-  onChunk(chunk);  // 直接使用可能
-}
-```
-
-### 不要な待機の削除
-
-AI応答完了後の追加メタデータ取得を削除し、即座にレスポンスを返しています。
-
-```javascript
-// Before: 追加情報を待機（遅い）
-const [finishReason, usage, text] = await Promise.all([
-  result.finishReason,
-  result.usage,
-  result.text,
-]);
-
-// After: 即座にreturn（高速）
-return { content: fullResponse };
-```
-
-**効果:** 20-50ms短縮
+**効果:**
+- ASR: Flash版で認識速度向上
+- LLM: Turbo版で200-400ms短縮、maxTokens制限で追加短縮
+- TTS: Flash版で合成速度向上
 
 ---
 
-## 4. 並列処理
+## 3. リアルタイム音声認識（WebSocket）
 
-### Promise.all による同時実行
+### 常時音声入力モード
 
-依存関係のない処理を並列実行することで、総待機時間を削減しています。
+WebSocketを使用したリアルタイムASRにより、録音完了を待たずに音声認識を開始します。
 
-**実装箇所:** `src/index.ts`
+**実装箇所:** `src/services/qwen-realtime-service.ts`
 
 ```typescript
-// 並列実行
-const [messages, searchResult] = await Promise.all([
-  chatService.getMessages(id),           // DB取得
-  shouldSearch ? searchWeb(content) : Promise.resolve({ success: false, results: [] }),  // Web検索
-  chatService.addMessage(id, "user", content),  // メッセージ保存（fire-and-forget）
-]);
+// WebSocket接続でリアルタイム音声認識
+const ASR_MODEL = 'qwen3-asr-flash-realtime';
+
+// Server VAD（音声区間検出）設定
+const sessionUpdate = {
+  type: 'session.update',
+  session: {
+    input_audio_transcription: {
+      language: 'ja',
+    },
+    turn_detection: {
+      type: 'server_vad',
+      threshold: 0.5,
+      silence_duration_ms: 800,
+    },
+  },
+};
 ```
 
 **処理フロー:**
 ```
-直列処理の場合:
-getMessages (10ms) → searchWeb (300ms) → addMessage (15ms) = 325ms
+従来方式:
+録音開始 → 録音完了 → 音声送信 → ASR処理 → テキスト受信
+           └──────── 待機時間 ────────┘
 
-並列処理の場合:
-┌─ getMessages (10ms)
-├─ searchWeb (300ms)    ──→ 最大待機時間 = 300ms
-└─ addMessage (15ms)
+リアルタイム方式:
+録音開始 → 音声チャンク送信 → 中間結果受信 → 最終結果受信
+           └── 並行処理 ──┘   └─ 逐次受信 ─┘
 ```
 
-**効果:** 25ms以上の短縮
+**効果:** 録音完了を待つ時間を削減
 
-### Fire-and-Forget パターン
+---
 
-結果を待つ必要のない処理は、完了を待たずに次の処理へ進みます。
+## 4. ストリーミングTTSパイプライン
+
+### 文単位の段階的音声合成
+
+LLMの応答全体を待たずに、文が完成するたびにTTS変換を開始します。
+
+**実装箇所:** `src/index.ts` (音声チャットエンドポイント)
 
 ```typescript
-// ユーザーメッセージ保存（結果不要）
-chatService.addMessage(id, "user", content).catch(console.error);
+// 文の境界検出パターン
+const sentenceEndPattern = /[。！？\n]/;
 
-// AI応答後の処理（ストリーム完了後にバックグラウンド実行）
-const postStreamOps = async () => {
-  await chatService.addMessage(id, "assistant", aiResponse);
-  // タイトル更新など
-};
-postStreamOps();  // awaitなし
+// LLMストリーミング中に文を検出
+await qwenLLMService.sendMessageStream(aiMessages, {
+  onChunk: async (chunk) => {
+    sentenceBuffer += chunk;
 
-// 即座にSSE完了を送信
-await stream.writeSSE({ data: JSON.stringify({ type: "done", ... }) });
+    // 文の境界を検出
+    while (sentenceEndPattern.test(sentenceBuffer)) {
+      const sentence = extractSentence(sentenceBuffer);
+
+      // 文が完成したらTTSキューに追加
+      ttsQueue.push({ sentence, index: audioIndex++ });
+      processTTSQueue();
+    }
+  },
+});
+```
+
+**処理フロー:**
+```
+従来方式:
+LLM応答完了 → TTS全文変換 → 音声再生開始
+└────────── 長い待機時間 ──────────┘
+
+ストリーミング方式:
+LLM開始 → 文1完成 → TTS1開始 → 文2完成 → TTS2開始 → ...
+              └─ 音声1再生 ─┘     └─ 音声2再生 ─┘
 ```
 
 ---
 
-## 5. キャッシュ戦略
+## 5. First Sentence Prefetch（最初の文の先行処理）
+
+### TTFA（Time To First Audio）の最小化
+
+最初の文は即座にTTS処理を開始し、後続の文はキューで順次処理します。
+
+**実装箇所:** `src/index.ts`
+
+```typescript
+let firstSentenceSent = false;
+
+// 文が完成したとき
+if (!firstSentenceSent) {
+  firstSentenceSent = true;
+  // 最初の文は即座にTTS送信（キューをバイパス）
+  sendToTTS(sentence, currentIndex).then(() => {
+    processTTSQueue();  // 完了後にキュー処理開始
+  });
+} else {
+  // 後続の文はキューに追加（順次処理）
+  ttsQueue.push({ sentence, index: currentIndex });
+  processTTSQueue();
+}
+```
+
+**効果:**
+- 最初の音声出力までの時間（TTFA）を最小化
+- 429エラー（レート制限）を回避しつつ最速で音声開始
+
+---
+
+## 6. 並列処理とFire-and-Forget
+
+### Promise.allによる同時実行
+
+**実装箇所:** `src/index.ts`
+
+```typescript
+// 依存関係のない処理を並列実行
+const [messages, searchResult] = await Promise.all([
+  chatService.getMessages(id),
+  shouldSearch ? searchWeb(content) : Promise.resolve({ success: false }),
+  chatService.addMessage(id, "user", content),  // fire-and-forget
+]);
+```
+
+### Fire-and-Forgetパターン
+
+結果を待つ必要のない処理は完了を待たずに次へ進みます。
+
+```typescript
+// メッセージ保存（結果不要）
+chatService.addMessage(convId, "user", userText).catch(console.error);
+
+// AI応答後の処理（ストリーム完了後にバックグラウンド実行）
+chatService.addMessage(convId, "assistant", aiResponse).catch(console.error);
+```
+
+---
+
+## 7. キャッシュ戦略
 
 ### システムプロンプトキャッシュ
-
-毎回生成されるシステムプロンプトをキャッシュし、再生成を回避しています。
 
 **実装箇所:** `src/index.ts`
 
@@ -247,99 +229,168 @@ const PROMPT_CACHE_TTL = 60000; // 1分
 
 function buildSystemPrompt(): string {
   const now = Date.now();
-
-  // キャッシュヒット
   if (cachedSystemPromptBase && (now - lastPromptCacheTime) < PROMPT_CACHE_TTL) {
-    return cachedSystemPromptBase;
+    return cachedSystemPromptBase;  // キャッシュヒット
   }
-
   // キャッシュミス: 再生成
-  const datetime = getCurrentDateTime();
-  cachedSystemPromptBase = `...`;
+  cachedSystemPromptBase = generatePrompt();
   lastPromptCacheTime = now;
   return cachedSystemPromptBase;
 }
 ```
 
-**効果:** 0-1ms（キャッシュヒット時）
+### Embeddingキャッシュ（RAG用）
 
----
+**実装箇所:** `src/rag/embedding.ts`
 
-## 6. パフォーマンス計測結果
+```typescript
+const CACHE_TTL = 5 * 60 * 1000;  // 5分
+const MAX_CACHE_SIZE = 100;
 
-### ベンチマーク
+// 同一クエリはAPIを呼び出さずにキャッシュから返す
+export async function getEmbedding(text: string): Promise<number[]> {
+  const cacheKey = normalizeCacheKey(text);
+  const cached = embeddingCache.get(cacheKey);
 
-```
-テスト環境: macOS, Bun 1.3.6, SQLite
-
-エンドポイント別レイテンシ:
-├── GET /                        : ~30ms
-├── GET /api/chat/conversations  : ~40ms
-├── POST /api/chat/conversations : ~7ms
-└── POST /.../messages/stream
-    ├── First chunk              : ~850ms
-    └── Total response           : ~900ms
-```
-
-### レイテンシ内訳
-
-```
-ストリーミングメッセージ送信時の内訳（850ms）:
-
-サーバー処理
-├── JSONパース            : 1-2ms
-├── 会話確認（DB）        : 5ms
-├── 並列処理
-│   ├── メッセージ取得    : 5ms
-│   ├── Web検索          : 0-300ms（条件付き）
-│   └── メッセージ保存    : (fire-and-forget)
-└── プロンプト構築        : 0-1ms
-                          ─────────
-                          合計: ~50ms
-
-外部API（Gemini）
-├── ネットワーク往復      : ~100ms
-└── AIモデル処理          : ~700ms
-                          ─────────
-                          合計: ~800ms
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+    return cached.embedding;  // キャッシュヒット
+  }
+  // キャッシュミス: API呼び出し
+}
 ```
 
 ---
 
-## 7. 今後の改善候補
+## 8. RAG検索の最適化
 
-### 実装可能な最適化
+### ハイブリッド検索の並列実行
 
-| 手法 | 想定効果 | 実装難易度 |
-|-----|---------|-----------|
-| プリフェッチ（投機的実行） | 100-200ms | 中 |
-| Redis キャッシュ | 50-100ms | 中 |
-| より高速なAIモデル | 200-400ms | 低 |
+**実装箇所:** `src/services/rag-service.ts`
 
-### Edge配置（将来構想）
-
+```typescript
+// ベクトル検索とキーワード検索を並列実行
+const [vectorResults, keywordResults] = await Promise.all([
+  this.vectorSearch(query, fetchK),
+  this.keywordSearch(query, fetchK),
+]);
 ```
-現在: クライアント → サーバー(東京) → Gemini API
-          └─────────────┬─────────────┘
-                    ~800ms
-
-将来: クライアント → Edge(最寄り) → Gemini API
-          └──────────┬──────────┘
-                  ~500ms
-```
-
-Cloudflare Workers や Vercel Edge Functions への移行により、さらなる低遅延化が可能です。
 
 ---
 
-## まとめ
+## 9. ランタイム最適化
 
-本アプリケーションでは、以下の戦略により低遅延を実現しています：
+### Bun + Hono
 
-1. **高速ランタイム**: Bun + Hono の採用
-2. **DB最適化**: SELECT絞り込み、トランザクション、事前接続
-3. **AI最適化**: maxTokens削減、軽量ストリーム、不要待機削除
-4. **並列処理**: Promise.all、Fire-and-Forget
-5. **キャッシュ**: システムプロンプトのメモリキャッシュ
+**Bun の採用:**
+- 起動速度: Node.js比で4倍高速
+- HTTP処理: 2-3倍高速
+- TypeScript: ネイティブ実行（トランスパイル不要）
+- メモリ使用量: 約30%削減
 
-これらの組み合わせにより、サーバー処理部分を約50msに抑え、ユーザー体感の大部分をAIモデルの応答時間（~800ms）に最適化しています。
+**Hono の採用:**
+- バンドルサイズ: Express (~2MB) → Hono (~14KB)
+- SSEストリーミング: `streamSSE` による効率的な実装
+- Webstandard準拠で高速
+
+---
+
+## 10. 音声チャットのレイテンシ内訳
+
+### パイプライン全体
+
+```
+音声チャット処理の流れ:
+
+1. ASR（音声→テキスト）
+   ├── 音声送信・認識      : 300-500ms
+   └── クライアントへ送信   : ~10ms
+
+2. LLM（テキスト生成）
+   ├── プロンプト構築      : 0-1ms（キャッシュヒット時）
+   ├── RAG検索（条件付き）  : 100-200ms
+   ├── ネットワーク往復     : ~100ms
+   └── 最初のチャンク受信   : ~200ms（qwen-turbo）
+
+3. TTS（テキスト→音声）
+   ├── 最初の文のTTS       : 200-400ms
+   └── 音声URL取得・再生   : ~50ms
+
+4. 総合TTFA（Time To First Audio）
+   └── ASR完了から最初の音声まで: ~500-800ms
+```
+
+### 最適化なしの場合との比較
+
+```
+最適化なし:
+ASR完了 → LLM全応答待ち → TTS全文変換 → 音声再生
+          └─── 2-4秒 ───┘ └─ 1-2秒 ─┘
+          合計: 3-6秒
+
+最適化あり:
+ASR完了 → LLM開始 → 最初の文完成 → TTS → 音声再生
+          └── ~300ms ──┘ └ ~300ms ┘
+          合計: ~600ms
+```
+
+---
+
+## 11. まとめ
+
+### 低遅延を実現する主要な戦略
+
+| 戦略 | 実装 | 効果 |
+|-----|------|------|
+| 高速モデル選定 | qwen-turbo, flash系モデル | 200-400ms短縮 |
+| リアルタイムASR | WebSocket + VAD | 録音待機時間削減 |
+| ストリーミングTTS | 文単位の段階的合成 | 全応答待ち削減 |
+| First Sentence Prefetch | 最初の文を即座にTTS | TTFA最小化 |
+| 並列処理 | Promise.all | 25ms以上短縮 |
+| Fire-and-Forget | 非ブロッキング保存 | 不要な待機削除 |
+| キャッシュ | プロンプト、Embedding | API呼び出し削減 |
+
+### アーキテクチャ図
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      クライアント                            │
+│  ┌─────────┐    ┌─────────┐    ┌─────────┐                 │
+│  │ 録音    │───▶│ WebSocket│───▶│ 音声再生 │                 │
+│  └─────────┘    └────┬────┘    └────▲────┘                 │
+└─────────────────────┼───────────────┼───────────────────────┘
+                      │               │
+                      ▼               │
+┌─────────────────────────────────────────────────────────────┐
+│                       サーバー                               │
+│                                                             │
+│  ┌──────────────┐                                          │
+│  │ Realtime ASR │◀─── WebSocket (/ws/asr)                  │
+│  │ (qwen3-asr-  │                                          │
+│  │  flash-      │                                          │
+│  │  realtime)   │                                          │
+│  └──────┬───────┘                                          │
+│         │ テキスト                                          │
+│         ▼                                                   │
+│  ┌──────────────┐    ┌──────────────┐                      │
+│  │     LLM      │◀──▶│     RAG      │                      │
+│  │ (qwen-turbo) │    │ (ChromaDB +  │                      │
+│  │              │    │  BM25)       │                      │
+│  └──────┬───────┘    └──────────────┘                      │
+│         │ ストリーミング応答                                 │
+│         ▼                                                   │
+│  ┌──────────────┐                                          │
+│  │ TTS Pipeline │                                          │
+│  │ ┌──────────┐ │                                          │
+│  │ │First Sent│─┼──▶ 即座にTTS（TTFA最小化）               │
+│  │ └──────────┘ │                                          │
+│  │ ┌──────────┐ │                                          │
+│  │ │TTS Queue │─┼──▶ 順次処理（レート制限回避）             │
+│  │ └──────────┘ │                                          │
+│  └──────┬───────┘                                          │
+│         │ 音声URL                                           │
+│         ▼                                                   │
+│      SSE送信 ───────────────────────────────────▶ 音声再生  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+これらの最適化により、ユーザーが話し終わってから最初の音声が聞こえるまでの時間を約500-800msに抑えています。
