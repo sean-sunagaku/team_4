@@ -83,6 +83,9 @@ const defaultOptions = {
 function App() {
   const [isNavigating, setIsNavigating] = useState(false)
   const [isModalOpen, setIsModalOpen] = useState(false)
+  // Google Maps ナビゲーション用URL（ポップアップで開く）
+  const [googleMapsNavUrl, setGoogleMapsNavUrl] = useState<string | null>(null)
+  const [missionSteps, setMissionSteps] = useState<string[]>(["aaa"])
   const {
     currentLocation,
     directions,
@@ -98,6 +101,17 @@ function App() {
 
   const handleOpenNavigationModal = () => {
     setIsModalOpen(true)
+  }
+
+  // Google Mapsをポップアップで開く
+  const openGoogleMapsPopup = () => {
+    if (googleMapsNavUrl) {
+      window.open(
+        googleMapsNavUrl,
+        'googleMapsNav',
+        'width=600,height=800,left=800,top=100'
+      )
+    }
   }
 
   const handleNavigationFormSubmit = async (formData: NavigationFormData) => {
@@ -126,19 +140,15 @@ function App() {
       if (result.success) {
         // AI さんに向けて、ここでデータを受け取っています。
         const suggestion = result.data
-        // レスポンスを表示
-        alert(
-          `ルート提案:\n\n` +
-          `目的地: ${suggestion.destination?.name || '不明'}\n` +
-          `住所: ${suggestion.destination?.address || '不明'}\n\n` +
-          `ステップ:\n${suggestion.steps?.join('\n') || 'なし'}\n\n` +
-          `注意事項:\n${suggestion.notes?.join('\n') || 'なし'}\n\n` +
-          `Google Maps URL:\n${suggestion.googleMapsUrl || '不明'}`
-        )
 
-        // Google Maps URLがあれば開く
-        if (suggestion.googleMapsUrl) {
-          window.open(suggestion.googleMapsUrl, '_blank')
+        // ミッションステップを設定
+        if (suggestion.steps && Array.isArray(suggestion.steps)) {
+          setMissionSteps(suggestion.steps)
+        }
+
+        // Google Maps ナビゲーションURLを設定
+        if (suggestion.googleMapsNavUrl) {
+          setGoogleMapsNavUrl(suggestion.googleMapsNavUrl)
         }
 
         setIsNavigating(true)
@@ -173,45 +183,75 @@ function App() {
 
   return (
     <LoadScript googleMapsApiKey={GOOGLE_MAPS_API_KEY} libraries={['places']}>
-      <div className="app-container">
-        <GoogleMap
-          mapContainerStyle={mapContainerStyle}
-          center={currentLocation || defaultCenter}
-          zoom={currentLocation ? 18 : 10}
-          options={defaultOptions}
-          tilt={45}
-        >
-          {currentLocation && typeof google !== 'undefined' && (
-            <Marker
-              position={currentLocation}
-              icon={{
-                url: naviIcon,
-                scaledSize: new google.maps.Size(48, 48),
-                anchor: new google.maps.Point(24, 24),
-              }}
+      <div className="app-container grid-layout">
+        {/* 左: ミッションリスト */}
+        {missionSteps.length > 0 && (
+          <div className="mission-list-panel">
+            <h2 className="mission-list-title">ミッションリスト</h2>
+            <ul className="mission-list">
+              {missionSteps.map((step, index) => (
+                <li key={index} className="mission-item">
+                  {step}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* 中央: マップと運転サポート */}
+        <div className="center-panel">
+          <GoogleMap
+            mapContainerStyle={mapContainerStyle}
+            center={currentLocation || defaultCenter}
+            zoom={currentLocation ? 18 : 10}
+            options={defaultOptions}
+            tilt={45}
+          >
+            {currentLocation && typeof google !== 'undefined' && (
+              <Marker
+                position={currentLocation}
+                icon={{
+                  url: naviIcon,
+                  scaledSize: new google.maps.Size(48, 48),
+                  anchor: new google.maps.Point(24, 24),
+                }}
+              />
+            )}
+            {directions && <DirectionsRenderer directions={directions} />}
+          </GoogleMap>
+
+          <DrivingSupportPanel
+            onStartNavigation={handleOpenNavigationModal}
+            isNavigating={isNavigating}
+          />
+
+          {!isNavigating ? (
+            <AIChatButton />
+          ) : (
+            <NavigationPanel
+              routeInfo={routeInfo}
+              onStopNavigation={handleStopNavigation}
             />
           )}
-          {directions && <DirectionsRenderer directions={directions} />}
-        </GoogleMap>
+        </div>
 
-        <DrivingSupportPanel
-          onStartNavigation={handleOpenNavigationModal}
-          isNavigating={isNavigating}
-        />
+        {/* 右: Google Maps ナビ開始ボタン */}
+        {googleMapsNavUrl && (
+          <div className="map-nav-button-container">
+            <button
+              className="google-maps-nav-button"
+              onClick={openGoogleMapsPopup}
+            >
+              🗺️ Google Mapsで案内開始
+            </button>
+          </div>
+        )}
 
         <NavigationStartModal
           isOpen={isModalOpen}
           onClose={() => setIsModalOpen(false)}
           onStartNavigation={handleNavigationFormSubmit}
         />
-        {!isNavigating ? (
-          <AIChatButton />
-        ) : (
-          <NavigationPanel
-            routeInfo={routeInfo}
-            onStopNavigation={handleStopNavigation}
-          />
-        )}
       </div>
     </LoadScript>
   )

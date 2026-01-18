@@ -80,7 +80,7 @@ export interface Waypoint {
 }
 
 export interface RouteSuggestion {
-  googleMapsUrl: string;
+  googleMapsNavUrl: string;
   steps: string[];
   notes: string[];
   waypoints: Waypoint[];
