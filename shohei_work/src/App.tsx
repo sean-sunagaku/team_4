@@ -114,20 +114,50 @@ function App() {
   const handleNavigationFormSubmit = async (formData: NavigationFormData) => {
     setIsModalOpen(false)
 
-    // 現在地を取得
-    if (!currentLocation) {
-      await getCurrentLocation()
-    }
+    try {
+      // /api/route/suggest APIを呼び出し
+      const response = await fetch('http://localhost:3000/api/route/suggest', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          origin: formData.departure,
+          practiceType: formData.practiceType,
+          constraints: {
+            avoidHighways: true,
+            avoidTolls: true,
+          },
+        }),
+      })
 
-    // 目的地を設定（一時的にpromptを使用、後でAIチャットから設定できるようにする）
-    const destination = prompt('目的地を入力してください:')
-    if (destination && currentLocation) {
-      // フォームデータをコンソールに出力（後でAI機能で活用）
-      console.log('ナビゲーション設定:', formData)
-      await calculateRoute(currentLocation, destination)
-      setIsNavigating(true)
-    } else if (!currentLocation) {
-      alert('現在地を取得できませんでした。位置情報の許可を確認してください。')
+      const result = await response.json()
+      console.log('API Response:', result)
+
+      if (result.success) {
+        const suggestion = result.data
+        // レスポンスを表示
+        alert(
+          `ルート提案:\n\n` +
+          `目的地: ${suggestion.destination?.name || '不明'}\n` +
+          `住所: ${suggestion.destination?.address || '不明'}\n\n` +
+          `ステップ:\n${suggestion.steps?.join('\n') || 'なし'}\n\n` +
+          `注意事項:\n${suggestion.notes?.join('\n') || 'なし'}\n\n` +
+          `Google Maps URL:\n${suggestion.googleMapsUrl || '不明'}`
+        )
+
+        // Google Maps URLがあれば開く
+        if (suggestion.googleMapsUrl) {
+          window.open(suggestion.googleMapsUrl, '_blank')
+        }
+
+        setIsNavigating(true)
+      } else {
+        alert(`エラー: ${result.error}`)
+      }
+    } catch (error) {
+      console.error('API呼び出しエラー:', error)
+      alert('ルート提案の取得に失敗しました。サーバーが起動しているか確認してください。')
     }
   }
 
