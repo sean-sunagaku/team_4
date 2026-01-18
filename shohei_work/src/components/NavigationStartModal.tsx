@@ -1,9 +1,30 @@
 import { useState } from 'react'
 import './NavigationStartModal.css'
 
+// 練習タイプの定義
+export const PRACTICE_TYPES = [
+  "BACK_PARKING",
+  "BASIC_START_STOP",
+  "U_TURN",
+  "INTERSECTION_TURN",
+  "MERGE_LANECHANGE",
+  "NARROW_ROAD",
+] as const
+
+export type PracticeType = (typeof PRACTICE_TYPES)[number]
+
+export const PRACTICE_TYPE_LABELS: Record<PracticeType, string> = {
+  BACK_PARKING: "バック駐車",
+  BASIC_START_STOP: "基本発進・停止",
+  U_TURN: "Uターン",
+  INTERSECTION_TURN: "交差点右左折",
+  MERGE_LANECHANGE: "合流・車線変更",
+  NARROW_ROAD: "狭路走行",
+}
+
 export interface NavigationFormData {
   departure: string      // 出発地点
-  weakPoints: string     // 苦手項目
+  practiceType: PracticeType  // 練習タイプ
 }
 
 interface NavigationStartModalProps {
@@ -27,7 +48,7 @@ const NavigationStartModal = ({
 }: NavigationStartModalProps) => {
   const [formData, setFormData] = useState<NavigationFormData>({
     departure: '',
-    weakPoints: ''
+    practiceType: 'INTERSECTION_TURN'
   })
   const [isLoadingLocation, setIsLoadingLocation] = useState(false)
   const [locationError, setLocationError] = useState<string | null>(null)
@@ -112,14 +133,18 @@ const NavigationStartModal = ({
           </div>
 
           <div className="form-group">
-            <label className="form-label">苦手項目</label>
-            <input
-              type="text"
-              className="form-input"
-              value={formData.weakPoints}
-              onChange={(e) => handleInputChange('weakPoints', e.target.value)}
-              placeholder="例: 右折、車線変更、駐車"
-            />
+            <label className="form-label">練習項目</label>
+            <select
+              className="form-input form-select"
+              value={formData.practiceType}
+              onChange={(e) => handleInputChange('practiceType', e.target.value)}
+            >
+              {PRACTICE_TYPES.map((type) => (
+                <option key={type} value={type}>
+                  {PRACTICE_TYPE_LABELS[type]}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div className="modal-actions">
