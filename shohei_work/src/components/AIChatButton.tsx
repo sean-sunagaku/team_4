@@ -245,7 +245,8 @@ const AIChatButton = ({ autoStart = false, placement = 'floating', alwaysListen 
           console.error('Voice chat error:', error)
           setVoiceState('idle')
         },
-      }, 'qwen') // Use server-side TTS (Qwen API)
+      }, "browser") // Use server-side TTS (Qwen API)
+      // }, 'qwen') // Use server-side TTS (Qwen API)
     } catch (error) {
       console.error('Failed to send voice message:', error)
       setVoiceState('idle')
