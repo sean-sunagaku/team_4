@@ -12,6 +12,8 @@ import { ragService } from "./services/rag-service.js";
 import { qwenASRService } from "./services/qwen-asr-service.js";
 import { qwenLLMService } from "./services/qwen-llm-service.js";
 import { qwenTTSService } from "./services/qwen-tts-service.js";
+import { qwenRealtimeService } from "./services/qwen-realtime-service.js";
+import WebSocket from "ws";
 
 dotenv.config();
 
@@ -843,6 +845,59 @@ app.post("/api/voice/chat", async (c) => {
   });
 });
 
+// Wake word detection endpoint
+app.post("/api/voice/detect-wake-word", async (c) => {
+  try {
+    const body = await c.req.json();
+    const { audio, format } = body as {
+      audio: string;
+      format?: string;
+    };
+
+    if (!audio) {
+      return c.json({ error: "Audio data is required", detected: false }, 400);
+    }
+
+    // Use existing Qwen ASR service
+    const asrResult = await qwenASRService.transcribeAudio(audio, format || "webm");
+
+    if (!asrResult.success || !asrResult.text) {
+      return c.json({
+        detected: false,
+        transcription: "",
+        error: asrResult.error || "Transcription failed"
+      });
+    }
+
+    const transcription = asrResult.text;
+
+    // Check for wake word patterns - 緩和したパターンマッチング
+    const wakeWordPatterns = [
+      "ドライバ",      // 基本パターン（「ドライバー」「ドライバで」等にマッチ）
+      "どらいば",      // ひらがな
+      "drivab",        // ローマ字（部分）
+    ];
+
+    const normalized = transcription.toLowerCase();
+    const detected = wakeWordPatterns.some(pattern =>
+      normalized.includes(pattern.toLowerCase())
+    );
+
+    console.log(`Wake word check: "${transcription}" -> detected: ${detected}`);
+
+    return c.json({
+      detected,
+      transcription
+    });
+  } catch (error) {
+    console.error("Error in wake word detection:", error);
+    return c.json({
+      detected: false,
+      error: error instanceof Error ? error.message : "Unknown error"
+    }, 500);
+  }
+});
+
 // Simple ASR endpoint - just transcribe audio
 app.post("/api/voice/transcribe", async (c) => {
   try {
@@ -898,10 +953,87 @@ app.post("/api/voice/synthesize", async (c) => {
   }
 });
 
-// Export for Bun
-export default {
+// WebSocket upgrade route is handled by Bun.serve() directly
+
+// Wake word patterns for detection
+const WAKE_WORD_PATTERNS = ["ドライバ", "どらいば", "drivab"];
+
+function checkWakeWord(text: string): boolean {
+  const normalized = text.toLowerCase();
+  return WAKE_WORD_PATTERNS.some(pattern =>
+    normalized.includes(pattern.toLowerCase())
+  );
+}
+
+// Start server with Bun.serve() for WebSocket support
+const server = Bun.serve({
   port: Number(PORT),
-  fetch: app.fetch,
-};
+  fetch(req, server) {
+    // Handle WebSocket upgrade for /ws/asr
+    const url = new URL(req.url);
+    if (url.pathname === '/ws/asr') {
+      const upgraded = server.upgrade(req);
+      if (upgraded) {
+        return undefined;
+      }
+      return new Response('WebSocket upgrade failed', { status: 400 });
+    }
+
+    // Handle regular HTTP requests with Hono
+    return app.fetch(req);
+  },
+  websocket: {
+    open(ws: any) {
+      console.log("WebSocket client connected");
+
+      // Create DashScope realtime session
+      const session = qwenRealtimeService.createRealtimeASRSession({
+        onTranscript: (text, isFinal) => {
+          console.log(`ASR transcript: "${text}" (final: ${isFinal})`);
+          const detected = checkWakeWord(text);
+          ws.send(JSON.stringify({
+            type: 'transcript',
+            text,
+            isFinal,
+            wakeWordDetected: detected,
+          }));
+        },
+        onError: (error) => {
+          console.error("ASR error:", error);
+          ws.send(JSON.stringify({ type: 'error', error }));
+        },
+        onConnected: () => {
+          console.log("DashScope ASR session ready");
+          ws.send(JSON.stringify({ type: 'ready' }));
+        },
+        onDisconnected: () => {
+          console.log("DashScope ASR session disconnected");
+        },
+      });
+
+      // Store session in ws data
+      ws.data = { session };
+    },
+    message(ws: any, message: string | Buffer) {
+      try {
+        const data = JSON.parse(message.toString());
+
+        if (data.type === 'audio' && data.audio) {
+          // Forward audio to DashScope
+          ws.data?.session?.sendAudio(data.audio);
+        } else if (data.type === 'finish') {
+          // Signal end of audio
+          ws.data?.session?.finishAudio();
+        }
+      } catch (err) {
+        console.error("WebSocket message error:", err);
+      }
+    },
+    close(ws: any) {
+      console.log("WebSocket client disconnected");
+      ws.data?.session?.close();
+    },
+  },
+});
 
 console.log(`Server running on port ${PORT}`);
