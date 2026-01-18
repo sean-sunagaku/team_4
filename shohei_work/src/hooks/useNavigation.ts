@@ -17,36 +17,6 @@ export const useNavigation = () => {
   const [currentLocation, setCurrentLocation] = useState<LatLng | null>(null)
   const [directions, setDirections] = useState<google.maps.DirectionsResult | null>(null)
   const [routeInfo, setRouteInfo] = useState<RouteInfo | null>(null)
-  const [isLocationLoading, setIsLocationLoading] = useState(false)
-
-  const getCurrentLocation = useCallback(async () => {
-    setIsLocationLoading(true)
-    try {
-      if (navigator.geolocation) {
-        const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-          navigator.geolocation.getCurrentPosition(resolve, reject, {
-            enableHighAccuracy: true,
-            timeout: 10000,
-            maximumAge: 0,
-          })
-        })
-
-        const location: LatLng = {
-          lat: position.coords.latitude,
-          lng: position.coords.longitude,
-        }
-        setCurrentLocation(location)
-      } else {
-        alert('このブラウザは位置情報をサポートしていません')
-      }
-    } catch (error) {
-      console.error('位置情報の取得に失敗しました:', error)
-      alert('位置情報の取得に失敗しました。位置情報の許可を確認してください。')
-    } finally {
-      setIsLocationLoading(false)
-    }
-  }, [])
-
   const geocodeAddress = useCallback(async (address: string): Promise<LatLng | null> => {
     try {
       const geocoder = new Geocoder()
@@ -113,8 +83,6 @@ export const useNavigation = () => {
     currentLocation,
     directions,
     routeInfo,
-    isLocationLoading,
-    getCurrentLocation,
     calculateRoute,
     clearRoute,
   }
