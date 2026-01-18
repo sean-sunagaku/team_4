@@ -85,7 +85,7 @@ function App() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   // Google Maps ナビゲーション用URL（ポップアップで開く）
   const [googleMapsNavUrl, setGoogleMapsNavUrl] = useState<string | null>(null)
-  const [missionSteps, setMissionSteps] = useState<string[]>(["aaa"])
+  const [missionSteps, setMissionSteps] = useState<string[]>([])
   const {
     currentLocation,
     directions,
@@ -183,60 +183,55 @@ function App() {
 
   return (
     <LoadScript googleMapsApiKey={GOOGLE_MAPS_API_KEY} libraries={['places']}>
-      <div className="app-container grid-layout">
-        {/* 左: ミッションリスト */}
-        {missionSteps.length > 0 && (
-          <div className="mission-list-panel">
-            <h2 className="mission-list-title">ミッションリスト</h2>
-            <ul className="mission-list">
-              {missionSteps.map((step, index) => (
-                <li key={index} className="mission-item">
-                  {step}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {/* 中央: マップと運転サポート */}
-        <div className="center-panel">
-          <GoogleMap
-            mapContainerStyle={mapContainerStyle}
-            center={currentLocation || defaultCenter}
-            zoom={currentLocation ? 18 : 10}
-            options={defaultOptions}
-            tilt={45}
-          >
-            {currentLocation && typeof google !== 'undefined' && (
-              <Marker
-                position={currentLocation}
-                icon={{
-                  url: naviIcon,
-                  scaledSize: new google.maps.Size(48, 48),
-                  anchor: new google.maps.Point(24, 24),
-                }}
-              />
-            )}
-            {directions && <DirectionsRenderer directions={directions} />}
-          </GoogleMap>
+      <div className={`app-container grid-layout ${isNavigating && googleMapsNavUrl ? 'navigating-mode' : ''}`}>
+        {/* 左: ミッションリストと運転サポート（縦並び） */}
+        <div className="left-panel w-full">
+          {missionSteps.length > 0 && (
+            <div className="mission-list-panel">
+              <h2 className="mission-list-title">ミッションリスト</h2>
+              <ul className="mission-list">
+                {missionSteps.map((step, index) => (
+                  <li key={index} className="mission-item">
+                    {step}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           <DrivingSupportPanel
             onStartNavigation={handleOpenNavigationModal}
             isNavigating={isNavigating}
           />
-
-          {!isNavigating ? (
-            <AIChatButton />
-          ) : (
-            <NavigationPanel
-              routeInfo={routeInfo}
-              onStopNavigation={handleStopNavigation}
-            />
-          )}
         </div>
 
-        {/* 右: Google Maps ナビ開始ボタン */}
-        {googleMapsNavUrl && (
+        {/* 中央: 地図（ナビゲーション中は非表示） */}
+        {!isNavigating && (
+          <div className="center-panel">
+            <GoogleMap
+              mapContainerStyle={mapContainerStyle}
+              center={currentLocation || defaultCenter}
+              zoom={currentLocation ? 18 : 10}
+              options={defaultOptions}
+              tilt={45}
+            >
+              {currentLocation && typeof google !== 'undefined' && (
+                <Marker
+                  position={currentLocation}
+                  icon={{
+                    url: naviIcon,
+                    scaledSize: new google.maps.Size(48, 48),
+                    anchor: new google.maps.Point(24, 24),
+                  }}
+                />
+              )}
+              {directions && <DirectionsRenderer directions={directions} />}
+            </GoogleMap>
+          </div>
+        )}
+
+        {/* 右: Google Maps ナビ開始ボタン（ナビゲーション中のみ表示） */}
+        {isNavigating && googleMapsNavUrl && (
           <div className="map-nav-button-container">
             <button
               className="google-maps-nav-button"
@@ -253,6 +248,16 @@ function App() {
           onStartNavigation={handleNavigationFormSubmit}
         />
       </div>
+                {!isNavigating ? (
+            <AIChatButton />
+          ) : (
+            // ナビゲーションパネルは一旦非表示
+            // <NavigationPanel
+            //   routeInfo={routeInfo}
+            //   onStopNavigation={handleStopNavigation}
+            // />
+            null
+          )}
     </LoadScript>
   )
 }

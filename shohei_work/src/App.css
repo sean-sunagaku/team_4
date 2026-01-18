@@ -65,26 +65,43 @@
   opacity: 0.9;
 }
 
-/* グリッドレイアウト（3カラム: 左ミッション / 中央マップ / 右iframe） */
+/* グリッドレイアウト（デフォルトは2カラム: 左ミッション / 中央マップ） */
 .app-container.grid-layout {
   display: grid;
-  grid-template-columns: 280px 1fr 40%;
+  grid-template-columns: 280px 1fr;
   grid-template-rows: 1fr;
 }
 
-/* 中央パネル（マップと運転サポート） */
+/* ナビゲーション中は2カラム（左: ミッションリスト / 右: Google Mapsボタン） */
+.app-container.grid-layout.navigating-mode {
+  grid-template-columns: 280px 1fr;
+}
+
+
+/* 左パネル（ミッションリスト + 運転サポート縦並び） */
+.left-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+
+/* 中央パネル（マップ） */
 .center-panel {
   position: relative;
   height: 100vh;
 }
 
-/* ミッションリストパネル（左） */
+/* ミッションリストパネル（左上） */
 .mission-list-panel {
-  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  background: transparent;
   padding: 16px;
-  height: 100vh;
+  flex-shrink: 0;
+  max-height: 40%;
   overflow-y: auto;
-  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .mission-list-title {

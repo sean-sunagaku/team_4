@@ -11,7 +11,7 @@ const NavigationPanel = ({ routeInfo, onStopNavigation }: NavigationPanelProps) 
     <div className="navigation-panel">
       <div className="navigation-panel-content">
         <div className="navigation-header">
-          <h2 className="navigation-title">ナビゲーション中</h2>
+          {/* <h2 className="navigation-title">ナビゲーション中</h2> */}
           <button onClick={onStopNavigation} className="stop-button">
             <span className="stop-icon">⏹</span>
             停止
