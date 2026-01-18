@@ -3,6 +3,7 @@ import { GoogleMap, LoadScript, DirectionsRenderer, Marker } from '@react-google
 import AIChatButton from './components/AIChatButton'
 import NavigationPanel from './components/NavigationPanel'
 import DrivingSupportPanel from './components/DrivingSupportPanel'
+import NavigationStartModal, { NavigationFormData } from './components/NavigationStartModal'
 import { useNavigation } from './hooks/useNavigation'
 import './App.css'
 
@@ -80,6 +81,7 @@ const defaultOptions = {
 
 function App() {
   const [isNavigating, setIsNavigating] = useState(false)
+  const [isModalOpen, setIsModalOpen] = useState(false)
   const {
     currentLocation,
     directions,
@@ -105,15 +107,23 @@ function App() {
     alert('AIチャット機能は今後実装予定です')
   }
 
-  const handleStartNavigation = async () => {
+  const handleOpenNavigationModal = () => {
+    setIsModalOpen(true)
+  }
+
+  const handleNavigationFormSubmit = async (formData: NavigationFormData) => {
+    setIsModalOpen(false)
+
     // 現在地を取得
     if (!currentLocation) {
       await getCurrentLocation()
     }
-    
-    // 目的地を設定（一時的に固定値、後でAIチャットから設定できるようにする）
+
+    // 目的地を設定（一時的にpromptを使用、後でAIチャットから設定できるようにする）
     const destination = prompt('目的地を入力してください:')
     if (destination && currentLocation) {
+      // フォームデータをコンソールに出力（後でAI機能で活用）
+      console.log('ナビゲーション設定:', formData)
       await calculateRoute(currentLocation, destination)
       setIsNavigating(true)
     } else if (!currentLocation) {
@@ -164,9 +174,15 @@ function App() {
           {directions && <DirectionsRenderer directions={directions} />}
         </GoogleMap>
 
-        <DrivingSupportPanel 
-          onStartNavigation={handleStartNavigation} 
+        <DrivingSupportPanel
+          onStartNavigation={handleOpenNavigationModal}
           isNavigating={isNavigating}
+        />
+
+        <NavigationStartModal
+          isOpen={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+          onStartNavigation={handleNavigationFormSubmit}
         />
         {!isNavigating ? (
           <AIChatButton onClick={handleAIChatClick} />
