@@ -64,3 +64,109 @@
   font-size: 1rem;
   opacity: 0.9;
 }
+
+/* グリッドレイアウト（3カラム: 左ミッション / 中央マップ / 右iframe） */
+.app-container.grid-layout {
+  display: grid;
+  grid-template-columns: 280px 1fr 40%;
+  grid-template-rows: 1fr;
+}
+
+/* 中央パネル（マップと運転サポート） */
+.center-panel {
+  position: relative;
+  height: 100vh;
+}
+
+/* ミッションリストパネル（左） */
+.mission-list-panel {
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  padding: 16px;
+  height: 100vh;
+  overflow-y: auto;
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.mission-list-title {
+  color: #fff;
+  font-size: 1.2rem;
+  font-weight: bold;
+  margin: 0 0 12px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mission-list-title::before {
+  content: "📋";
+}
+
+.mission-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.mission-item {
+  background: rgba(255, 255, 255, 0.05);
+  border-left: 3px solid #667eea;
+  padding: 12px;
+  margin-bottom: 8px;
+  border-radius: 0 8px 8px 0;
+  color: #e0e0e0;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.mission-item:last-child {
+  margin-bottom: 0;
+}
+
+/* 右側 Google Maps ナビボタンコンテナ */
+.map-nav-button-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+}
+
+.google-maps-nav-button {
+  background: linear-gradient(135deg, #4285f4 0%, #34a853 100%);
+  color: white;
+  border: none;
+  padding: 20px 40px;
+  font-size: 1.3rem;
+  font-weight: bold;
+  border-radius: 12px;
+  cursor: pointer;
+  box-shadow: 0 4px 20px rgba(66, 133, 244, 0.4);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.google-maps-nav-button:hover {
+  transform: scale(1.05);
+  box-shadow: 0 6px 30px rgba(66, 133, 244, 0.6);
+}
+
+.google-maps-nav-button:active {
+  transform: scale(0.98);
+}
+
+/* ミッションリストのスクロールバースタイル */
+.mission-list-panel::-webkit-scrollbar {
+  width: 6px;
+}
+
+.mission-list-panel::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.mission-list-panel::-webkit-scrollbar-thumb {
+  background: rgba(102, 126, 234, 0.5);
+  border-radius: 3px;
+}
+
+.mission-list-panel::-webkit-scrollbar-thumb:hover {
+  background: rgba(102, 126, 234, 0.7);
+}

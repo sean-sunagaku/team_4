@@ -6,7 +6,7 @@ import { getSearchConfig } from "../config/route-search.config.js";
 import { geocodeAddress, type GeocodingResultData } from "./geocoding-service.js";
 import { searchNearbyPlaces } from "./places-service.js";
 import { selectRouteWithAI } from "./route-ai-service.js";
-import { generateGoogleMapsUrl } from "./maps-url-service.js";
+import { generateGoogleMapsNavUrl } from "./maps-url-service.js";
 import {
   RouteError,
   type PracticeType,
@@ -80,8 +80,8 @@ async function suggestRoute(params: SuggestRouteParams): Promise<RouteSuggestion
     });
   }
 
-  // Step 5: Google Maps URL生成
-  const googleMapsUrl = generateGoogleMapsUrl({
+  // Step 5: Google Maps ナビゲーションURL生成
+  const googleMapsNavUrl = generateGoogleMapsNavUrl({
     origin: {
       address: geocodingResult.address,
       location: geocodingResult.location,
@@ -99,7 +99,7 @@ async function suggestRoute(params: SuggestRouteParams): Promise<RouteSuggestion
 
   // Step 6: レスポンス構築
   const suggestion: RouteSuggestion = {
-    googleMapsUrl,
+    googleMapsNavUrl,
     steps: aiSelection.steps,
     notes: aiSelection.notes,
     waypoints: selectedWaypoints.map((wp) => ({
@@ -144,7 +144,7 @@ async function testGoogleApis(params: SuggestRouteParams): Promise<{
     destination: { name: string; address: string };
     waypoints: Array<{ name: string; address: string }>;
   };
-  googleMapsUrl: string;
+  googleMapsNavUrl: string;
 }> {
   console.log("[TEST] Google Maps API test request:", params);
 
@@ -175,7 +175,7 @@ async function testGoogleApis(params: SuggestRouteParams): Promise<{
         destination: { name: "", address: "" },
         waypoints: [],
       },
-      googleMapsUrl: "",
+      googleMapsNavUrl: "",
     };
   }
 
@@ -184,8 +184,8 @@ async function testGoogleApis(params: SuggestRouteParams): Promise<{
   const secondCandidate = candidates[1];
   const waypoints = secondCandidate ? [secondCandidate] : [];
 
-  // Step 4: URL生成
-  const googleMapsUrl = generateGoogleMapsUrl({
+  // Step 4: ナビゲーションURL生成
+  const googleMapsNavUrl = generateGoogleMapsNavUrl({
     origin: {
       address: geocodingResult.address,
       location: geocodingResult.location,
@@ -221,7 +221,7 @@ async function testGoogleApis(params: SuggestRouteParams): Promise<{
         address: wp.address,
       })),
     },
-    googleMapsUrl,
+    googleMapsNavUrl,
   };
 }
 
