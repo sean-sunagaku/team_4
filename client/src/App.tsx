@@ -268,8 +268,9 @@ function App() {
 
         {/* 中央: 地図（ナビゲーション中は非表示） */}
         {!isNavigating && (
-          <div className="center-panel">
-            <GoogleMap
+          <div className="center-panel" style={{ display: 'flex', flexDirection: 'column' }}>
+            <div style={{ flex: 1 }}>
+              <GoogleMap
               mapContainerStyle={mapContainerStyle}
               center={currentLocation || defaultCenter}
               zoom={currentLocation ? 18 : 10}
@@ -288,6 +289,7 @@ function App() {
               )}
               {directions && <DirectionsRenderer directions={directions} />}
             </GoogleMap>
+            </div>
           </div>
         )}
 
