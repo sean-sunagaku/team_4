@@ -21,8 +21,8 @@
   cursor: pointer;
   position: relative;
   overflow: visible;
-  transition: transform 0.2s ease;
-  box-shadow: 
+  transition: transform 0.2s ease, background-color 0.3s ease;
+  box-shadow:
     0 4px 16px rgba(0, 0, 0, 0.2),
     0 0 0 0 rgba(255, 255, 255, 0.4),
     0 0 0 0 rgba(255, 255, 255, 0.3);
@@ -67,6 +67,59 @@
   transform: scale(0.96);
 }
 
+.ai-chat-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.8;
+}
+
+/* Recording state */
+.ai-chat-button--recording {
+  background: #ef4444 !important;
+  animation: recordingPulse 1s ease-in-out infinite !important;
+}
+
+.ai-chat-button--recording::before {
+  background: rgba(239, 68, 68, 0.4);
+  animation: recordingRipple 1s ease-out infinite;
+}
+
+.ai-chat-button--recording::after {
+  background: rgba(239, 68, 68, 0.2);
+  animation: recordingRipple 1s ease-out infinite 0.3s;
+}
+
+.ai-chat-button--recording .star-icon {
+  filter: brightness(0) invert(1);
+}
+
+/* Processing state */
+.ai-chat-button--processing {
+  background: #f3f4f6 !important;
+  animation: none !important;
+}
+
+.ai-chat-button--processing::before,
+.ai-chat-button--processing::after {
+  animation: none;
+  opacity: 0;
+}
+
+/* Speaking state */
+.ai-chat-button--speaking {
+  background: #3b82f6 !important;
+  animation: speakingPulse 1.5s ease-in-out infinite !important;
+}
+
+.ai-chat-button--speaking::before {
+  background: rgba(59, 130, 246, 0.4);
+  animation: ripple 1.5s ease-out infinite;
+}
+
+.ai-chat-button--speaking::after {
+  background: rgba(59, 130, 246, 0.2);
+  animation: ripple 1.5s ease-out infinite 0.5s;
+}
+
 .star-icon {
   z-index: 1;
   position: relative;
@@ -76,6 +129,64 @@
   object-fit: contain;
 }
 
+/* Spinner */
+.spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid #e5e7eb;
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+/* Speaker icon */
+.speaker-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  height: 28px;
+}
+
+.speaker-wave {
+  width: 4px;
+  height: 12px;
+  background: white;
+  border-radius: 2px;
+  animation: speakerWave 0.6s ease-in-out infinite;
+}
+
+.speaker-wave:nth-child(1) {
+  animation-delay: 0s;
+  height: 8px;
+}
+
+.speaker-wave:nth-child(2) {
+  animation-delay: 0.2s;
+  height: 16px;
+}
+
+.speaker-wave:nth-child(3) {
+  animation-delay: 0.4s;
+  height: 10px;
+}
+
+/* Recording indicator */
+.recording-indicator {
+  position: absolute;
+  bottom: -28px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #ef4444;
+  color: white;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  white-space: nowrap;
+  animation: fadeInUp 0.3s ease-out;
+}
+
+/* Keyframes */
 @keyframes starPulse {
   0%, 100% {
     transform: scale(1);
@@ -89,19 +200,19 @@
 
 @keyframes pulseShadow {
   0% {
-    box-shadow: 
+    box-shadow:
       0 4px 16px rgba(0, 0, 0, 0.2),
       0 0 0 0 rgba(255, 255, 255, 0.4),
       0 0 0 0 rgba(255, 255, 255, 0.3);
   }
   50% {
-    box-shadow: 
+    box-shadow:
       0 4px 16px rgba(0, 0, 0, 0.3),
       0 0 0 8px rgba(255, 255, 255, 0),
       0 0 0 16px rgba(255, 255, 255, 0);
   }
   100% {
-    box-shadow: 
+    box-shadow:
       0 4px 16px rgba(0, 0, 0, 0.2),
       0 0 0 0 rgba(255, 255, 255, 0.4),
       0 0 0 0 rgba(255, 255, 255, 0.3);
@@ -120,6 +231,65 @@
   100% {
     transform: translate(-50%, -50%) scale(1.8);
     opacity: 0;
+  }
+}
+
+@keyframes recordingPulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 4px 16px rgba(239, 68, 68, 0.4);
+  }
+  50% {
+    transform: scale(1.05);
+    box-shadow: 0 4px 24px rgba(239, 68, 68, 0.6);
+  }
+}
+
+@keyframes recordingRipple {
+  0% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 0.6;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(2);
+    opacity: 0;
+  }
+}
+
+@keyframes speakingPulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 4px 16px rgba(59, 130, 246, 0.4);
+  }
+  50% {
+    transform: scale(1.03);
+    box-shadow: 0 4px 20px rgba(59, 130, 246, 0.5);
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes speakerWave {
+  0%, 100% {
+    transform: scaleY(0.6);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
   }
 }
 
