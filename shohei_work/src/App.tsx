@@ -130,6 +130,7 @@ function App() {
       console.log('API Response:', result)
 
       if (result.success) {
+        // AI さんに向けて、ここでデータを受け取っています。
         const suggestion = result.data
         // レスポンスを表示
         alert(
