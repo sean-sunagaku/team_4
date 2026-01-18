@@ -3,12 +3,38 @@
  * Provides real-time information search capability
  */
 
+export interface WebSearchResult {
+  type: "web" | "answer" | "note";
+  title?: string;
+  content: string;
+  url?: string;
+  source?: string;
+}
+
+export interface SearchResponse {
+  success: boolean;
+  query: string;
+  results: WebSearchResult[];
+  timestamp?: string;
+  error?: string;
+}
+
+export interface DateTimeInfo {
+  fullDate: string;
+  dayOfWeek: string;
+  year: string;
+  month: string;
+  day: string;
+  time: string;
+  iso: string;
+}
+
 /**
  * Search the web using DuckDuckGo HTML search (more reliable for Japanese)
- * @param {string} query - Search query
- * @returns {Promise<Object>} Search results
+ * @param query - Search query
+ * @returns Search results
  */
-export async function searchWeb(query) {
+export async function searchWeb(query: string): Promise<SearchResponse> {
   try {
     // Use DuckDuckGo HTML search which works better for Japanese
     const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
@@ -22,7 +48,7 @@ export async function searchWeb(query) {
     });
 
     const html = await response.text();
-    const results = [];
+    const results: WebSearchResult[] = [];
 
     // Extract search results using regex - DuckDuckGo HTML structure
     // Each result is in a div with class "result results_links results_links_deep web-result"
@@ -45,14 +71,14 @@ export async function searchWeb(query) {
           // Clean up the snippet - remove HTML tags
           snippet = snippetMatch[1].replace(/<[^>]*>/g, '').trim();
         }
-        let url = "";
+        let resultUrl = "";
         if (urlMatch) {
-          url = urlMatch[1];
+          resultUrl = urlMatch[1];
           // Decode DuckDuckGo redirect URL
-          if (url.includes("uddg=")) {
-            const decoded = url.match(/uddg=([^&]+)/);
+          if (resultUrl.includes("uddg=")) {
+            const decoded = resultUrl.match(/uddg=([^&]+)/);
             if (decoded) {
-              url = decodeURIComponent(decoded[1]);
+              resultUrl = decodeURIComponent(decoded[1]);
             }
           }
         }
@@ -62,7 +88,7 @@ export async function searchWeb(query) {
             type: "web",
             title: title,
             content: snippet,
-            url: url,
+            url: resultUrl,
           });
         }
       }
@@ -89,7 +115,7 @@ export async function searchWeb(query) {
     return {
       success: false,
       query,
-      error: error.message,
+      error: (error as Error).message,
       results: [],
     };
   }
@@ -97,11 +123,11 @@ export async function searchWeb(query) {
 
 /**
  * Get current date and time information
- * @returns {Object} Current date/time info
+ * @returns Current date/time info
  */
-export function getCurrentDateTime() {
+export function getCurrentDateTime(): DateTimeInfo {
   const now = new Date();
-  const options = {
+  const options: Intl.DateTimeFormatOptions = {
     timeZone: 'Asia/Tokyo',
     weekday: 'long',
     year: 'numeric',
@@ -127,10 +153,10 @@ export function getCurrentDateTime() {
 
 /**
  * Format search results for AI context
- * @param {Object} searchResult - Search result from searchWeb
- * @returns {string} Formatted string for AI
+ * @param searchResult - Search result from searchWeb
+ * @returns Formatted string for AI
  */
-export function formatSearchResultsForAI(searchResult) {
+export function formatSearchResultsForAI(searchResult: SearchResponse): string {
   if (!searchResult.success || searchResult.results.length === 0) {
     return `検索「${searchResult.query}」: 結果が見つかりませんでした。`;
   }

@@ -4,7 +4,7 @@
  * 実行方法: bun run test-shared-knowledge.ts
  */
 
-const BASE_URL = 'http://localhost:3001';
+const BASE_URL = process.env.BASE_URL || 'http://localhost:3001';
 
 async function sleep(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -166,3 +166,5 @@ async function testSharedKnowledge() {
 }
 
 testSharedKnowledge().catch(console.error);
+
+export {};

@@ -1,6 +1,10 @@
 import { PrismaClient } from "@prisma/client";
 
-const globalForPrisma = global;
+interface GlobalWithPrisma {
+  prisma?: PrismaClient;
+}
+
+const globalForPrisma = global as GlobalWithPrisma;
 
 // Optimized Prisma client configuration
 const prisma = globalForPrisma.prisma || new PrismaClient({
@@ -11,7 +15,7 @@ const prisma = globalForPrisma.prisma || new PrismaClient({
 });
 
 // Pre-connect to database (reduces cold start latency)
-prisma.$connect().catch((err) => {
+prisma.$connect().catch((err: Error) => {
   console.error("Failed to connect to database:", err);
 });
 
