@@ -1,10 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { GoogleMap, LoadScript, DirectionsRenderer, Marker } from '@react-google-maps/api'
 import AIChatButton from './components/AIChatButton'
-import NavigationPanel from './components/NavigationPanel'
 import DrivingSupportPanel from './components/DrivingSupportPanel'
 import NavigationStartModal, { NavigationFormData } from './components/NavigationStartModal'
 import { useNavigation } from './hooks/useNavigation'
+import { QRCodeCanvas } from 'qrcode.react'
 import './App.css'
 
 const naviIcon = new URL('./icon/navi_icon.png', import.meta.url).href
@@ -85,19 +85,17 @@ function App() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   // Google Maps ナビゲーション用URL（ポップアップで開く）
   const [googleMapsNavUrl, setGoogleMapsNavUrl] = useState<string | null>(null)
+  // QRコード表示用URL（入力で差し替え可能）
+  const [qrUrl, setQrUrl] = useState('')
   const [missionSteps, setMissionSteps] = useState<string[]>([])
   const {
     currentLocation,
     directions,
-    routeInfo,
-    clearRoute,
-    calculateRoute,
   } = useNavigation()
 
-  const handleStopNavigation = () => {
-    setIsNavigating(false)
-    clearRoute()
-  }
+  useEffect(() => {
+    if (googleMapsNavUrl) setQrUrl(googleMapsNavUrl)
+  }, [googleMapsNavUrl])
 
   const handleOpenNavigationModal = () => {
     setIsModalOpen(true)
@@ -109,9 +107,9 @@ function App() {
       // 画面全体に大きく被せる（上からフルサイズ寄せ）
       const screenWidth = window.screen.width
       const screenHeight = window.screen.height
-      const windowWidth = screenWidth
+      const windowWidth = Math.floor(screenWidth * 0.7)
       const windowHeight = screenHeight
-      const left = 0
+      const left = Math.max(0, screenWidth - windowWidth)
       const top = 0
 
       const popup = window.open(
@@ -292,6 +290,33 @@ function App() {
             >
               🗺️ Google Mapsで案内開始
             </button>
+
+            <div className="qr-section">
+              <div className="qr-section-title">QRコード（URL読み込み）</div>
+              <input
+                className="qr-url-input"
+                type="url"
+                inputMode="url"
+                value={qrUrl}
+                onChange={(e) => setQrUrl(e.target.value)}
+                placeholder="https://..."
+              />
+              {qrUrl.trim() && (
+                <div className="qr-code-and-link">
+                  <div className="qr-code-wrapper">
+                    <QRCodeCanvas value={qrUrl.trim()} size={220} includeMargin />
+                  </div>
+                  <a
+                    className="qr-open-link"
+                    href={qrUrl.trim()}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    このURLを開く
+                  </a>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -301,16 +326,7 @@ function App() {
           onStartNavigation={handleNavigationFormSubmit}
         />
       </div>
-      {!isNavigating ? (
-        <AIChatButton />
-      ) : (
-        // ナビゲーションパネルは一旦非表示
-        // <NavigationPanel
-        //   routeInfo={routeInfo}
-        //   onStopNavigation={handleStopNavigation}
-        // />
-        null
-      )}
+      <AIChatButton autoStart={isNavigating} />
     </LoadScript>
   )
 }

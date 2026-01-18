@@ -13,7 +13,7 @@ export interface LatLng {
 }
 
 export const useNavigation = () => {
-  const [currentLocation, setCurrentLocation] = useState<LatLng | null>(null)
+  const [currentLocation] = useState<LatLng | null>(null)
   const [directions, setDirections] = useState<google.maps.DirectionsResult | null>(null)
   const [routeInfo, setRouteInfo] = useState<RouteInfo | null>(null)
   const geocodeAddress = useCallback(async (address: string): Promise<LatLng | null> => {
