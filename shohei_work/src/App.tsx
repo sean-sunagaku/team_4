@@ -106,11 +106,39 @@ function App() {
   // Google Mapsをポップアップで開く
   const openGoogleMapsPopup = () => {
     if (googleMapsNavUrl) {
-      window.open(
+      // 画面全体に大きく被せる（上からフルサイズ寄せ）
+      const screenWidth = window.screen.width
+      const screenHeight = window.screen.height
+      const windowWidth = screenWidth
+      const windowHeight = screenHeight
+      const left = 0
+      const top = 0
+
+      const popup = window.open(
         googleMapsNavUrl,
         'googleMapsNav',
-        'width=600,height=800,left=800,top=100'
+        [
+          `width=${windowWidth}`,
+          `height=${windowHeight}`,
+          `left=${left}`,
+          `top=${top}`,
+          // ブラウザによっては指定が無視されるが、可能な範囲で「被せる」方向に寄せる
+          'resizable=yes',
+          'scrollbars=yes',
+          'toolbar=yes',
+          'location=yes',
+          'menubar=no',
+          'status=no',
+        ].join(',')
       )
+
+      // ポップアップブロック時は同一タブで開く
+      if (!popup) {
+        window.location.assign(googleMapsNavUrl)
+        return
+      }
+
+      popup.focus()
     }
   }
 
@@ -184,26 +212,51 @@ function App() {
   return (
     <LoadScript googleMapsApiKey={GOOGLE_MAPS_API_KEY} libraries={['places']}>
       <div className={`app-container grid-layout ${isNavigating && googleMapsNavUrl ? 'navigating-mode' : ''}`}>
-        {/* 左: ミッションリストと運転サポート（縦並び） */}
-        <div className="left-panel w-full">
-          {missionSteps.length > 0 && (
-            <div className="mission-list-panel">
-              <h2 className="mission-list-title">ミッションリスト</h2>
-              <ul className="mission-list">
-                {missionSteps.map((step, index) => (
-                  <li key={index} className="mission-item">
-                    {step}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+        {/* 左: ミッションリストと運転サポート（縦並び）- ナビゲーション中は非表示 */}
+        {!isNavigating && (
+          <div className="left-panel w-full">
+            {missionSteps.length > 0 && (
+              <div className="mission-list-panel">
+                <h2 className="mission-list-title">ミッションリスト</h2>
+                <ul className="mission-list">
+                  {missionSteps.map((step, index) => (
+                    <li key={index} className="mission-item">
+                      {step}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
-          <DrivingSupportPanel
-            onStartNavigation={handleOpenNavigationModal}
-            isNavigating={isNavigating}
-          />
-        </div>
+            <DrivingSupportPanel
+              onStartNavigation={handleOpenNavigationModal}
+              isNavigating={isNavigating}
+            />
+          </div>
+        )}
+
+        {/* ナビゲーション中: 左カラム - ミッションリストと運転サポート */}
+        {isNavigating && (
+          <div className="left-panel w-full">
+            {missionSteps.length > 0 && (
+              <div className="mission-list-panel">
+                <h2 className="mission-list-title">ミッションリスト</h2>
+                <ul className="mission-list">
+                  {missionSteps.map((step, index) => (
+                    <li key={index} className="mission-item">
+                      {step}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <DrivingSupportPanel
+              onStartNavigation={handleOpenNavigationModal}
+              isNavigating={isNavigating}
+            />
+          </div>
+        )}
 
         {/* 中央: 地図（ナビゲーション中は非表示） */}
         {!isNavigating && (
@@ -248,16 +301,16 @@ function App() {
           onStartNavigation={handleNavigationFormSubmit}
         />
       </div>
-                {!isNavigating ? (
-            <AIChatButton />
-          ) : (
-            // ナビゲーションパネルは一旦非表示
-            // <NavigationPanel
-            //   routeInfo={routeInfo}
-            //   onStopNavigation={handleStopNavigation}
-            // />
-            null
-          )}
+      {!isNavigating ? (
+        <AIChatButton />
+      ) : (
+        // ナビゲーションパネルは一旦非表示
+        // <NavigationPanel
+        //   routeInfo={routeInfo}
+        //   onStopNavigation={handleStopNavigation}
+        // />
+        null
+      )}
     </LoadScript>
   )
 }

@@ -75,33 +75,33 @@ export function generateGoogleMapsUrl(params: RouteUrlParams): string {
  * @see https://developers.google.com/maps/documentation/urls/get-started#directions-action
  */
 export function generateGoogleMapsNavUrl(params: RouteUrlParams): string {
+  // Google Maps URL (Directions URL / api=1) 形式にする
+  // - dir_action=navigate は「アプリでナビ開始」を促す（主にモバイル向け）
+  // - ブラウザ(PC)ではターンバイターン開始ができない場合がある
   const url = new URL(GOOGLE_MAPS_NAV_URL);
-  url.searchParams.set("api", "1");
 
-  // 出発地（座標形式）
+  url.searchParams.set("api", "1");
   url.searchParams.set(
     "origin",
     `${params.origin.location.lat},${params.origin.location.lng}`
   );
-
-  // 目的地（座標形式）
   url.searchParams.set(
     "destination",
     `${params.destination.location.lat},${params.destination.location.lng}`
   );
 
-  // 経由地
   if (params.waypoints && params.waypoints.length > 0) {
-    const waypointCoords = params.waypoints
-      .map((wp) => `${wp.location.lat},${wp.location.lng}`)
-      .join("|");
-    url.searchParams.set("waypoints", waypointCoords);
+    url.searchParams.set(
+      "waypoints",
+      params.waypoints
+        .map((wp) => `${wp.location.lat},${wp.location.lng}`)
+        .join("|")
+    );
   }
 
-  // 移動モード
   url.searchParams.set("travelmode", "driving");
+  url.searchParams.set("dir_action", "navigate");
 
-  // 回避設定
   const avoidOptions: string[] = [];
   if (params.constraints?.avoidTolls) {
     avoidOptions.push("tolls");
@@ -110,7 +110,7 @@ export function generateGoogleMapsNavUrl(params: RouteUrlParams): string {
     avoidOptions.push("highways");
   }
   if (avoidOptions.length > 0) {
-    url.searchParams.set("avoid", avoidOptions.join(","));
+    url.searchParams.set("avoid", avoidOptions.join("|"));
   }
 
   return url.toString();

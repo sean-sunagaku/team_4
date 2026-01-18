@@ -13,11 +13,6 @@ const DrivingSupportPanel = ({ onStartNavigation, isNavigating }: DrivingSupport
   const [isOpen, setIsOpen] = useState(true)
   const [selectedItem, setSelectedItem] = useState<ManualItem | null>(null)
 
-  // ナビゲーション中は非表示
-  if (isNavigating) {
-    return null
-  }
-
   const handleItemClick = (item: ManualItem) => {
     setSelectedItem(item)
   }
@@ -85,7 +80,7 @@ const DrivingSupportPanel = ({ onStartNavigation, isNavigating }: DrivingSupport
 
   return (
     <>
-      {onStartNavigation && (
+      {onStartNavigation && !isNavigating && (
         <button
           onClick={onStartNavigation}
           className="start-navigation-button"

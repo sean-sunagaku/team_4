@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import './AIChatButton.css'
 import { chatApi } from '../lib/chat-api'
 
@@ -11,7 +11,11 @@ const MIN_RECORDING_DURATION = 500
 
 type VoiceState = 'idle' | 'recording' | 'processing' | 'speaking'
 
-const AIChatButton = () => {
+interface AIChatButtonProps {
+  autoStart?: boolean
+}
+
+const AIChatButton = ({ autoStart = false }: AIChatButtonProps) => {
   const [voiceState, setVoiceState] = useState<VoiceState>('idle')
 
   // Refs
@@ -261,6 +265,19 @@ const AIChatButton = () => {
       setVoiceState('idle')
     }
   }, [cleanup, sendVoiceMessage])
+
+  // autoStartがtrueになったら自動的に録音開始
+  const hasAutoStartedRef = useRef(false)
+  useEffect(() => {
+    if (autoStart && voiceState === 'idle' && !hasAutoStartedRef.current) {
+      hasAutoStartedRef.current = true
+      // 少し遅延を入れてからスタート（UIの描画を待つ）
+      const timer = setTimeout(() => {
+        startRecording()
+      }, 500)
+      return () => clearTimeout(timer)
+    }
+  }, [autoStart, voiceState, startRecording])
 
   // ボタンクリック
   const handleClick = useCallback(() => {
