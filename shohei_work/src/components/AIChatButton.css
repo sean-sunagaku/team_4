@@ -5,6 +5,15 @@
   z-index: 10;
 }
 
+.ai-chat-button-container--inline {
+  position: static;
+  bottom: auto;
+  right: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .ai-chat-button {
   width: 64px !important;
   height: 64px !important;

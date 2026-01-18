@@ -139,6 +139,37 @@
   margin-bottom: 0;
 }
 
+/* ナビ中: AI相談カード（運転サポートの上） */
+.ai-consult-card {
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.ai-consult-title {
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 800;
+  margin-bottom: 6px;
+  letter-spacing: 0.02em;
+}
+
+.ai-consult-subtitle {
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 0.85rem;
+  line-height: 1.4;
+  margin-bottom: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ai-consult-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 /* 右側 Google Maps ナビボタンコンテナ */
 .map-nav-button-container {
   display: flex;
