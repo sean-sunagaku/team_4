@@ -8,15 +8,21 @@ const aiIcon = new URL('../icon/ai_icon.png', import.meta.url).href
 const SILENCE_THRESHOLD = 0.01
 const SILENCE_DURATION = 1500
 const MIN_RECORDING_DURATION = 500
+const WAKE_CHECK_INTERVAL = 3000 // 3秒ごとにウェイクワードチェック
+const VOICE_ACTIVITY_THRESHOLD = 0.005 // 音声があるとみなす閾値
 
-type VoiceState = 'idle' | 'recording' | 'processing' | 'speaking'
+// API Base URL
+const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:3001'
+
+type VoiceState = 'idle' | 'listening' | 'recording' | 'processing' | 'speaking'
 
 interface AIChatButtonProps {
   autoStart?: boolean
   placement?: 'floating' | 'inline'
+  alwaysListen?: boolean // 常時待機モード
 }
 
-const AIChatButton = ({ autoStart = false, placement = 'floating' }: AIChatButtonProps) => {
+const AIChatButton = ({ autoStart = false, placement = 'floating', alwaysListen = false }: AIChatButtonProps) => {
   const [voiceState, setVoiceState] = useState<VoiceState>('idle')
 
   // Refs
@@ -28,6 +34,12 @@ const AIChatButton = ({ autoStart = false, placement = 'floating' }: AIChatButto
   const silenceCheckIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const hasVoiceActivityRef = useRef(false)
   const recordingStartTimeRef = useRef(0)
+
+  // Wake word detection refs
+  const wakeCheckIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const wakeRecorderRef = useRef<MediaRecorder | null>(null)
+  const wakeWordBufferRef = useRef<Blob[]>([])
+  const alwaysListenRef = useRef(alwaysListen)
 
   // Audio playback (URL-based, e.g., Qwen TTS)
   const audioQueueRef = useRef<{ url: string; index: number }[]>([])
@@ -67,6 +79,9 @@ const AIChatButton = ({ autoStart = false, placement = 'floating' }: AIChatButto
     })
   }
 
+  // 音声再生完了後にlistening or idleに戻る用のref
+  const returnToIdleOrListeningRef = useRef<() => void>(() => setVoiceState('idle'))
+
   // Audio queue management
   const playNextInQueue = useCallback(() => {
     if (isPlayingRef.current) return
@@ -89,7 +104,7 @@ const AIChatButton = ({ autoStart = false, placement = 'floating' }: AIChatButto
         isPlayingRef.current = false
         nextExpectedIndexRef.current++
         if (audioQueueRef.current.length === 0) {
-          setVoiceState('idle')
+          returnToIdleOrListeningRef.current()
         }
         playNextInQueue()
       }
@@ -98,7 +113,7 @@ const AIChatButton = ({ autoStart = false, placement = 'floating' }: AIChatButto
         isPlayingRef.current = false
         nextExpectedIndexRef.current++
         if (audioQueueRef.current.length === 0) {
-          setVoiceState('idle')
+          returnToIdleOrListeningRef.current()
         }
         playNextInQueue()
       }
@@ -107,7 +122,7 @@ const AIChatButton = ({ autoStart = false, placement = 'floating' }: AIChatButto
         isPlayingRef.current = false
         nextExpectedIndexRef.current++
         if (audioQueueRef.current.length === 0) {
-          setVoiceState('idle')
+          returnToIdleOrListeningRef.current()
         }
         playNextInQueue()
       })
@@ -169,7 +184,7 @@ const AIChatButton = ({ autoStart = false, placement = 'floating' }: AIChatButto
         nextBrowserTtsIndexRef.current++
         // Check if more text in queue
         if (browserTtsQueueRef.current.length === 0) {
-          setVoiceState('idle')
+          returnToIdleOrListeningRef.current()
         }
         speakNextBrowserTts() // Speak next
       }
@@ -178,7 +193,7 @@ const AIChatButton = ({ autoStart = false, placement = 'floating' }: AIChatButto
         isBrowserSpeakingRef.current = false
         nextBrowserTtsIndexRef.current++
         if (browserTtsQueueRef.current.length === 0) {
-          setVoiceState('idle')
+          returnToIdleOrListeningRef.current()
         }
         speakNextBrowserTts() // Skip and speak next
       }
@@ -237,8 +252,8 @@ const AIChatButton = ({ autoStart = false, placement = 'floating' }: AIChatButto
     }
   }, [queueAudio, queueBrowserTts, resetAudioQueue])
 
-  // クリーンアップ
-  const cleanup = useCallback(() => {
+  // クリーンアップ（録音のみ）
+  const cleanupRecording = useCallback(() => {
     if (silenceCheckIntervalRef.current) {
       clearInterval(silenceCheckIntervalRef.current)
       silenceCheckIntervalRef.current = null
@@ -246,6 +261,21 @@ const AIChatButton = ({ autoStart = false, placement = 'floating' }: AIChatButto
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop()
     }
+  }, [])
+
+  // 完全クリーンアップ（ストリームも含む）
+  const cleanup = useCallback(() => {
+    cleanupRecording()
+    // Wake word detection cleanup
+    if (wakeCheckIntervalRef.current) {
+      clearInterval(wakeCheckIntervalRef.current)
+      wakeCheckIntervalRef.current = null
+    }
+    if (wakeRecorderRef.current && wakeRecorderRef.current.state !== 'inactive') {
+      wakeRecorderRef.current.stop()
+    }
+    wakeRecorderRef.current = null
+    // Stream cleanup
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop())
       streamRef.current = null
@@ -255,27 +285,88 @@ const AIChatButton = ({ autoStart = false, placement = 'floating' }: AIChatButto
       audioContextRef.current = null
     }
     analyserRef.current = null
+  }, [cleanupRecording])
+
+  // ウェイクワードチェック（サーバーAPI呼び出し）
+  const checkWakeWord = useCallback(async (audioBlob: Blob): Promise<{ detected: boolean; transcription?: string }> => {
+    try {
+      const audioData = await blobToBase64(audioBlob)
+      const response = await fetch(`${API_BASE_URL}/api/voice/detect-wake-word`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ audio: audioData, format: 'webm' }),
+      })
+
+      if (!response.ok) {
+        console.error('Wake word API error:', response.status)
+        return { detected: false }
+      }
+
+      const text = await response.text()
+      if (!text) return { detected: false }
+
+      try {
+        const result = JSON.parse(text)
+        console.log('Wake word result:', result)
+        return { detected: result.detected, transcription: result.transcription }
+      } catch {
+        console.error('Failed to parse wake word response')
+        return { detected: false }
+      }
+    } catch (error) {
+      console.error('Wake word check failed:', error)
+      return { detected: false }
+    }
   }, [])
 
-  // 録音開始
-  const startRecording = useCallback(async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          sampleRate: 16000,
-          channelCount: 1,
-          echoCancellation: true,
-          noiseSuppression: true,
-        },
-      })
-      streamRef.current = stream
+  // リスニング停止
+  const stopListening = useCallback(() => {
+    if (wakeCheckIntervalRef.current) {
+      clearInterval(wakeCheckIntervalRef.current)
+      wakeCheckIntervalRef.current = null
+    }
+    if (wakeRecorderRef.current && wakeRecorderRef.current.state !== 'inactive') {
+      wakeRecorderRef.current.stop()
+    }
+    wakeRecorderRef.current = null
+    // ストリームも停止
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop())
+      streamRef.current = null
+    }
+    if (audioContextRef.current) {
+      audioContextRef.current.close()
+      audioContextRef.current = null
+    }
+    analyserRef.current = null
+    setVoiceState('idle')
+  }, [])
 
-      // Audio Context setup
-      audioContextRef.current = new AudioContext({ sampleRate: 16000 })
-      analyserRef.current = audioContextRef.current.createAnalyser()
-      analyserRef.current.fftSize = 2048
-      const source = audioContextRef.current.createMediaStreamSource(stream)
-      source.connect(analyserRef.current)
+  // startListening用のref（循環参照を避けるため）
+  const startListeningRef = useRef<() => void>(() => {})
+
+  // 録音開始（既存ストリームを再利用可能）
+  const startRecordingWithStream = useCallback(async (existingStream?: MediaStream) => {
+    try {
+      let stream = existingStream
+      if (!stream) {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            sampleRate: 16000,
+            channelCount: 1,
+            echoCancellation: true,
+            noiseSuppression: true,
+          },
+        })
+        streamRef.current = stream
+
+        // Audio Context setup（新規ストリームの場合のみ）
+        audioContextRef.current = new AudioContext({ sampleRate: 16000 })
+        analyserRef.current = audioContextRef.current.createAnalyser()
+        analyserRef.current.fftSize = 2048
+        const source = audioContextRef.current.createMediaStreamSource(stream)
+        source.connect(analyserRef.current)
+      }
 
       // MediaRecorder setup
       const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
@@ -294,20 +385,31 @@ const AIChatButton = ({ autoStart = false, placement = 'floating' }: AIChatButto
       }
 
       mediaRecorder.onstop = async () => {
-        cleanup()
+        cleanupRecording()
 
         const recordingDuration = Date.now() - recordingStartTimeRef.current
         if (recordingDuration < MIN_RECORDING_DURATION || !hasVoiceActivityRef.current) {
           console.log('Recording too short or no voice activity')
-          setVoiceState('idle')
+          // alwaysListenならlisteningに戻る
+          if (alwaysListenRef.current && streamRef.current) {
+            startListeningRef.current()
+          } else {
+            setVoiceState('idle')
+          }
           return
         }
 
         if (audioChunksRef.current.length > 0) {
           const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
           await sendVoiceMessage(audioBlob)
+          // sendVoiceMessage完了後、alwaysListenならlisteningに戻る
+          // （speakingが終わった時点でidleになるので、その後にlisteningを開始）
         } else {
-          setVoiceState('idle')
+          if (alwaysListenRef.current && streamRef.current) {
+            startListeningRef.current()
+          } else {
+            setVoiceState('idle')
+          }
         }
       }
 
@@ -341,25 +443,184 @@ const AIChatButton = ({ autoStart = false, placement = 'floating' }: AIChatButto
       alert('マイクへのアクセスが許可されていません。')
       setVoiceState('idle')
     }
-  }, [cleanup, sendVoiceMessage])
+  }, [cleanupRecording, sendVoiceMessage])
 
-  // autoStartがtrueになったら自動的に録音開始
-  const hasAutoStartedRef = useRef(false)
-  useEffect(() => {
-    if (autoStart && voiceState === 'idle' && !hasAutoStartedRef.current) {
-      hasAutoStartedRef.current = true
-      // 少し遅延を入れてからスタート（UIの描画を待つ）
-      const timer = setTimeout(() => {
-        startRecording()
-      }, 500)
-      return () => clearTimeout(timer)
+  // 従来のstartRecording（互換性のため）
+  const startRecording = useCallback(async () => {
+    await startRecordingWithStream()
+  }, [startRecordingWithStream])
+
+  // リスニング開始（ウェイクワード待ち受け）
+  const startListening = useCallback(async () => {
+    try {
+      // 既存ストリームがなければ新規取得
+      if (!streamRef.current) {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            sampleRate: 16000,
+            channelCount: 1,
+            echoCancellation: true,
+            noiseSuppression: true,
+          },
+        })
+        streamRef.current = stream
+
+        // Audio Context setup
+        audioContextRef.current = new AudioContext({ sampleRate: 16000 })
+        analyserRef.current = audioContextRef.current.createAnalyser()
+        analyserRef.current.fftSize = 2048
+        const source = audioContextRef.current.createMediaStreamSource(stream)
+        source.connect(analyserRef.current)
+      }
+
+      setVoiceState('listening')
+
+      // REST APIポーリングでウェイクワード検出
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : 'audio/webm'
+
+      let currentRecorder: MediaRecorder | null = null
+      let audioChunks: Blob[] = []
+
+      const createNewRecording = () => {
+        if (currentRecorder && currentRecorder.state !== 'inactive') {
+          currentRecorder.stop()
+        }
+
+        if (!streamRef.current) return
+
+        currentRecorder = new MediaRecorder(streamRef.current, { mimeType })
+        wakeRecorderRef.current = currentRecorder
+        audioChunks = []
+
+        currentRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            audioChunks.push(event.data)
+          }
+        }
+
+        currentRecorder.onstop = async () => {
+          if (audioChunks.length === 0) return
+
+          // 音声アクティビティがある場合のみチェック
+          const rms = calculateRMS()
+          if (rms < VOICE_ACTIVITY_THRESHOLD) {
+            return
+          }
+
+          const audioBlob = new Blob(audioChunks, { type: 'audio/webm' })
+          const result = await checkWakeWord(audioBlob)
+          console.log('Wake word check result:', result)
+
+          if (result.detected) {
+            console.log('ウェイクワード検出！録音モードに切り替え...')
+            // ウェイクワード検出 -> 録音モードへ
+            if (wakeCheckIntervalRef.current) {
+              clearInterval(wakeCheckIntervalRef.current)
+              wakeCheckIntervalRef.current = null
+            }
+            // 既存ストリームを使って録音開始
+            startRecordingWithStream(streamRef.current!)
+          }
+        }
+
+        currentRecorder.start()
+      }
+
+      createNewRecording()
+
+      // 3秒ごとにウェイクワードチェック
+      wakeCheckIntervalRef.current = setInterval(() => {
+        if (currentRecorder && currentRecorder.state === 'recording') {
+          currentRecorder.stop()
+        }
+        setTimeout(() => {
+          if (wakeCheckIntervalRef.current) {
+            createNewRecording()
+          }
+        }, 100)
+      }, WAKE_CHECK_INTERVAL)
+
+    } catch (error) {
+      console.error('Failed to start listening:', error)
+      alert('マイクへのアクセスが許可されていません。')
+      setVoiceState('idle')
     }
-  }, [autoStart, voiceState, startRecording])
+  }, [checkWakeWord, startRecordingWithStream])
+
+  // refを更新
+  useEffect(() => {
+    startListeningRef.current = startListening
+    alwaysListenRef.current = alwaysListen
+    // 音声再生完了後の動作を設定
+    returnToIdleOrListeningRef.current = () => {
+      if (alwaysListen && streamRef.current) {
+        // alwaysListenがtrueならlisteningモードに戻る
+        setTimeout(() => startListening(), 500)
+      } else {
+        setVoiceState('idle')
+      }
+    }
+  }, [startListening, alwaysListen])
+
+  // autoStart/alwaysListenがtrueになったら自動的に開始
+  const hasAutoStartedRef = useRef(false)
+  const autoStartRef = useRef(autoStart)
+  const alwaysListenPropRef = useRef(alwaysListen)
+
+  // propsをrefに保存
+  useEffect(() => {
+    autoStartRef.current = autoStart
+    alwaysListenPropRef.current = alwaysListen
+  }, [autoStart, alwaysListen])
+
+  useEffect(() => {
+    console.log('AIChatButton mount effect:', { autoStart, alwaysListen, voiceState })
+    if ((autoStart || alwaysListen) && voiceState === 'idle') {
+      console.log('Starting listening mode in 500ms...')
+      const timer = setTimeout(() => {
+        console.log('Timer fired! alwaysListen:', alwaysListenPropRef.current)
+        if (alwaysListenPropRef.current) {
+          console.log('Calling startListeningRef.current()')
+          startListeningRef.current() // 常時待機モード
+        } else {
+          startRecording() // 従来の録音モード
+        }
+      }, 500)
+      return () => {
+        console.log('Timer cleared - will restart on remount')
+        clearTimeout(timer)
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // コンポーネントアンマウント時のクリーンアップ
+  useEffect(() => {
+    return () => {
+      cleanup()
+    }
+  }, [cleanup])
 
   // ボタンクリック
   const handleClick = useCallback(() => {
     if (voiceState === 'idle') {
-      startRecording()
+      if (alwaysListen) {
+        startListening() // 常時待機モードを開始
+      } else {
+        startRecording()
+      }
+    } else if (voiceState === 'listening') {
+      // リスニング中にタップで手動録音開始
+      if (wakeCheckIntervalRef.current) {
+        clearInterval(wakeCheckIntervalRef.current)
+        wakeCheckIntervalRef.current = null
+      }
+      if (wakeRecorderRef.current && wakeRecorderRef.current.state !== 'inactive') {
+        wakeRecorderRef.current.stop()
+      }
+      startRecordingWithStream(streamRef.current!)
     } else if (voiceState === 'recording') {
       // 録音中にタップで停止
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
@@ -368,9 +629,13 @@ const AIChatButton = ({ autoStart = false, placement = 'floating' }: AIChatButto
     } else if (voiceState === 'speaking') {
       // 再生中にタップで停止
       resetAudioQueue()
-      setVoiceState('idle')
+      if (alwaysListen) {
+        setTimeout(() => startListening(), 300)
+      } else {
+        setVoiceState('idle')
+      }
     }
-  }, [voiceState, startRecording, resetAudioQueue])
+  }, [voiceState, alwaysListen, startRecording, startListening, startRecordingWithStream, resetAudioQueue])
 
   return (
     <div
@@ -394,10 +659,17 @@ const AIChatButton = ({ autoStart = false, placement = 'floating' }: AIChatButto
             <div className="speaker-wave" />
             <div className="speaker-wave" />
           </div>
+        ) : voiceState === 'listening' ? (
+          <div className="listening-indicator">
+            <img src={aiIcon} alt="AI" className="star-icon star-icon--listening" />
+          </div>
         ) : (
           <img src={aiIcon} alt="AI" className="star-icon" />
         )}
       </button>
+      {voiceState === 'listening' && (
+        <div className="recording-indicator listening-text">待機中...</div>
+      )}
       {voiceState === 'recording' && (
         <div className="recording-indicator">録音中...</div>
       )}

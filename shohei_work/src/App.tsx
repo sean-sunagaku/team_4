@@ -255,7 +255,7 @@ function App() {
                 運転中の疑問を話しかけてください
               </div>
               <div className="ai-consult-action">
-                <AIChatButton autoStart={isNavigating} placement="inline" />
+                <AIChatButton autoStart={isNavigating} placement="inline" alwaysListen={true} />
               </div>
             </div>
 
@@ -336,7 +336,7 @@ function App() {
           onStartNavigation={handleNavigationFormSubmit}
         />
       </div>
-      {!isNavigating && <AIChatButton />}
+      {!isNavigating && <AIChatButton alwaysListen={true} />}
     </LoadScript>
   )
 }
