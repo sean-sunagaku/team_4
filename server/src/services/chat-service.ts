@@ -1,8 +1,47 @@
 import prisma from "../lib/db.js";
 
-export const chatService = {
+export type MessageRole = "system" | "user" | "assistant";
+
+export interface MessageRecord {
+  id?: string;
+  role: string;
+  content: string;
+}
+
+export interface MessageWithId {
+  id: string;
+  role: string;
+  content: string;
+}
+
+export interface ConversationSummary {
+  id: string;
+  userId: string;
+  title: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  messages?: MessageRecord[];
+}
+
+export interface AIFormattedMessage {
+  role: MessageRole;
+  content: string;
+}
+
+export interface ChatServiceInterface {
+  getUserConversations(userId: string): Promise<ConversationSummary[]>;
+  createConversation(userId: string, title?: string | null): Promise<ConversationSummary>;
+  getOrCreateConversation(userId: string, conversationId: string): Promise<ConversationSummary | null>;
+  getMessages(conversationId: string): Promise<MessageRecord[]>;
+  addMessage(conversationId: string, role: string, content: string): Promise<MessageWithId>;
+  updateTitle(conversationId: string, title: string): Promise<{ id: string; title: string | null }>;
+  deleteConversation(conversationId: string, userId: string): Promise<{ id: string }>;
+  formatMessagesForAI(messages: MessageRecord[]): AIFormattedMessage[];
+}
+
+export const chatService: ChatServiceInterface = {
   // Get all conversations for a user (optimized: minimal fields)
-  async getUserConversations(userId) {
+  async getUserConversations(userId: string): Promise<ConversationSummary[]> {
     return await prisma.conversation.findMany({
       where: { userId },
       orderBy: { updatedAt: "desc" },
@@ -22,7 +61,7 @@ export const chatService = {
   },
 
   // Create a new conversation
-  async createConversation(userId, title = null) {
+  async createConversation(userId: string, title: string | null = null): Promise<ConversationSummary> {
     return await prisma.conversation.create({
       data: { userId, title },
       select: { id: true, userId: true, title: true, createdAt: true, updatedAt: true },
@@ -30,7 +69,7 @@ export const chatService = {
   },
 
   // Get or create a conversation (optimized: no messages include)
-  async getOrCreateConversation(userId, conversationId) {
+  async getOrCreateConversation(userId: string, conversationId: string): Promise<ConversationSummary | null> {
     const conversation = await prisma.conversation.findFirst({
       where: { id: conversationId, userId },
       select: {
@@ -46,7 +85,7 @@ export const chatService = {
   },
 
   // Get messages for a conversation (optimized: only role and content)
-  async getMessages(conversationId) {
+  async getMessages(conversationId: string): Promise<MessageRecord[]> {
     return await prisma.message.findMany({
       where: { conversationId },
       orderBy: { createdAt: "asc" },
@@ -58,7 +97,7 @@ export const chatService = {
   },
 
   // Add a message to a conversation (optimized: single transaction)
-  async addMessage(conversationId, role, content) {
+  async addMessage(conversationId: string, role: string, content: string): Promise<MessageWithId> {
     const [message] = await prisma.$transaction([
       prisma.message.create({
         data: { conversationId, role, content },
@@ -75,7 +114,7 @@ export const chatService = {
   },
 
   // Update conversation title
-  async updateTitle(conversationId, title) {
+  async updateTitle(conversationId: string, title: string): Promise<{ id: string; title: string | null }> {
     return await prisma.conversation.update({
       where: { id: conversationId },
       data: { title },
@@ -84,7 +123,7 @@ export const chatService = {
   },
 
   // Delete a conversation (optimized: single transaction)
-  async deleteConversation(conversationId, userId) {
+  async deleteConversation(conversationId: string, userId: string): Promise<{ id: string }> {
     const conversation = await prisma.conversation.findFirst({
       where: { id: conversationId, userId },
       select: { id: true },
@@ -106,10 +145,10 @@ export const chatService = {
     return { id: conversationId };
   },
 
-  // Format messages for AI (no change needed)
-  formatMessagesForAI(messages) {
+  // Format messages for AI (cast role to MessageRole)
+  formatMessagesForAI(messages: MessageRecord[]): AIFormattedMessage[] {
     return messages.map((msg) => ({
-      role: msg.role,
+      role: msg.role as MessageRole,
       content: msg.content,
     }));
   },
