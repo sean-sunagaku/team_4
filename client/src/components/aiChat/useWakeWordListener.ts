@@ -1,12 +1,14 @@
 import { useCallback, useRef } from 'react'
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
-import { VoiceState } from './aiChatTypes'
+import { VoiceState, SupportedLanguage } from './aiChatTypes'
 
 type UseWakeWordListenerParams = {
   apiBaseUrl: string
   streamRef: MutableRefObject<MediaStream | null>
   audioContextRef: MutableRefObject<AudioContext | null>
   analyserRef: MutableRefObject<AnalyserNode | null>
+  selectedLanguageRef: MutableRefObject<SupportedLanguage>
+  setSelectedLanguage: Dispatch<SetStateAction<SupportedLanguage>>
   setVoiceState: Dispatch<SetStateAction<VoiceState>>
   startRecordingWithStream: (existingStream?: MediaStream) => Promise<void>
   playWakeSound: () => void
@@ -19,6 +21,8 @@ export const useWakeWordListener = ({
   streamRef,
   audioContextRef,
   analyserRef,
+  selectedLanguageRef,
+  setSelectedLanguage,
   setVoiceState,
   startRecordingWithStream,
   playWakeSound,
@@ -28,6 +32,9 @@ export const useWakeWordListener = ({
   const isUsingWebSocketRef = useRef(false)
   const audioWorkletRef = useRef<ScriptProcessorNode | null>(null)
   const startAudioStreamingRef = useRef<(() => void) | null>(null)
+  // クロージャ問題を回避するためのref
+  const setSelectedLanguageRef = useRef(setSelectedLanguage)
+  setSelectedLanguageRef.current = setSelectedLanguage
 
   // 手動で待受けを止める（録音切替やタップ時）
   // 待受け中の WS/Worklet を停止する
@@ -60,6 +67,14 @@ export const useWakeWordListener = ({
       wsRef.current = null
     }
     isUsingWebSocketRef.current = false
+  }, [])
+
+  // 言語をWebSocket経由でサーバーに設定（再接続なし）
+  const setLanguage = useCallback((language: SupportedLanguage) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'set_language', language }))
+      console.log(`Language set to: ${language}`)
+    }
   }, [])
 
   // WebSocket ASR に接続し、wake word 検出を開始
@@ -102,11 +117,32 @@ export const useWakeWordListener = ({
           const data = JSON.parse(event.data)
 
           if (data.type === 'ready') {
-            console.log('DashScope ASR ready, starting audio streaming')
+            const lang = data.language || selectedLanguageRef.current
+            selectedLanguageRef.current = lang
+            console.log(`DashScope ASR ready (language: ${lang}), starting audio streaming`)
             startAudioStreamingRef.current?.()
+          } else if (data.type === 'language_change') {
+            // サーバーからの言語変更検出: 新しい言語で再接続
+            console.log(`Language change detected: ${data.currentLanguage} → ${data.detectedLanguage}`)
+            console.log(`Detection text: "${data.text}"`)
+
+            // 現在のオーディオストリーミングを一時停止
+            if (audioWorkletRef.current) {
+              audioWorkletRef.current.disconnect()
+              audioWorkletRef.current = null
+            }
+
+            // 新しい言語で再接続をリクエスト + UIを更新
+            selectedLanguageRef.current = data.detectedLanguage
+            setSelectedLanguageRef.current(data.detectedLanguage) // 国旗UIを更新
+            ws.send(JSON.stringify({
+              type: 'reconnect_with_language',
+              language: data.detectedLanguage,
+            }))
           } else if (data.type === 'transcript') {
+            const lang = data.language || selectedLanguageRef.current
             console.log(
-              `ASR transcript: "${data.text}" (final: ${data.isFinal}, wake: ${data.wakeWordDetected})`
+              `ASR transcript: "${data.text}" (final: ${data.isFinal}, wake: ${data.wakeWordDetected}, lang: ${lang})`
             )
 
             if (data.wakeWordDetected) {
@@ -179,6 +215,7 @@ export const useWakeWordListener = ({
     audioContextRef,
     float32ToPCM16Base64,
     playWakeSound,
+    setSelectedLanguage,
     setVoiceState,
     startRecordingWithStream,
     streamRef,
@@ -188,5 +225,6 @@ export const useWakeWordListener = ({
     startListening,
     stopListening,
     cleanupWakeWord,
+    setLanguage,
   }
 }

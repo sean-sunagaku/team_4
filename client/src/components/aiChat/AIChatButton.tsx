@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import AIChatButtonView from './AIChatButtonView'
-import { VoiceState } from './aiChatTypes'
+import { VoiceState, SupportedLanguage } from './aiChatTypes'
 import { blobToBase64, float32ToPCM16Base64, playNotificationSound } from './aiChatUtils'
 import { useAudioQueue } from './useAudioQueue'
 import { useAudioRecorder } from './useAudioRecorder'
@@ -27,6 +27,8 @@ interface AIChatButtonProps {
 // 画面状態と音声フロー（待機→録音→送信→再生→復帰）を束ねるコントローラ
 const AIChatButton = ({ autoStart = false, placement = 'floating', alwaysListen = false }: AIChatButtonProps) => {
   const [voiceState, setVoiceState] = useState<VoiceState>('idle')
+  const [selectedLanguage, setSelectedLanguage] = useState<SupportedLanguage>('ja')
+  const selectedLanguageRef = useRef<SupportedLanguage>('ja')
 
   // 録音/解析の状態保持（再レンダリングに影響させない）
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -69,9 +71,17 @@ const AIChatButton = ({ autoStart = false, placement = 'floating', alwaysListen 
     try {
       const audioData = await blobToBase64(audioBlob)
 
+      // 現在のASR言語をヒントとして渡す
+      const languageHint = selectedLanguageRef.current
+
       await chatApi.sendVoiceMessage(audioData, 'webm', {
-        onTranscription: (text) => {
-          console.log('Transcription:', text)
+        onTranscription: (text, language) => {
+          console.log(`Transcription (${language || 'unknown'}):`, text)
+          // 検出言語を保存 + 国旗UIを更新
+          if (language) {
+            selectedLanguageRef.current = language as SupportedLanguage
+            setSelectedLanguage(language as SupportedLanguage)
+          }
         },
         onChunk: (chunk) => {
           console.log('Response chunk:', chunk)
@@ -82,10 +92,11 @@ const AIChatButton = ({ autoStart = false, placement = 'floating', alwaysListen 
           setVoiceState('speaking')
           queueAudio(url, index ?? 0)
         },
-        // ブラウザTTSのテキストを順次再生
-        onTtsText: (text, index) => {
-          console.log(`Browser TTS[${index}]:`, text.slice(0, 30))
-          queueBrowserTts(text, index ?? 0)
+        // ブラウザTTSのテキストを順次再生（サーバーから言語情報があればそれを使用）
+        onTtsText: (text, index, language) => {
+          const lang = language || selectedLanguageRef.current
+          console.log(`Browser TTS[${index}] (${lang}):`, text.slice(0, 30))
+          queueBrowserTts(text, index ?? 0, lang)
         },
         onDone: (content) => {
           console.log('Done:', content)
@@ -98,8 +109,7 @@ const AIChatButton = ({ autoStart = false, placement = 'floating', alwaysListen 
           console.error('Voice chat error:', error)
           setVoiceState('idle')
         },
-      }, "browser") // Use server-side TTS (Qwen API)
-      // }, 'qwen') // Use server-side TTS (Qwen API)
+      }, "qwen", languageHint) // Use Qwen TTS with language hint
     } catch (error) {
       console.error('Failed to send voice message:', error)
       setVoiceState('idle')
@@ -126,11 +136,13 @@ const AIChatButton = ({ autoStart = false, placement = 'floating', alwaysListen 
   })
 
   // WebSocket ASR を使った wake word 待機
-  const { startListening, stopListening, cleanupWakeWord } = useWakeWordListener({
+  const { startListening, stopListening, cleanupWakeWord, setLanguage } = useWakeWordListener({
     apiBaseUrl: API_BASE_URL,
     streamRef,
     audioContextRef,
     analyserRef,
+    selectedLanguageRef,
+    setSelectedLanguage,
     setVoiceState,
     startRecordingWithStream,
     playWakeSound,
@@ -203,6 +215,13 @@ const AIChatButton = ({ autoStart = false, placement = 'floating', alwaysListen 
     }
   }, [cleanup])
 
+  // 言語選択ハンドラ
+  const handleLanguageSelect = useCallback((lang: SupportedLanguage) => {
+    setSelectedLanguage(lang)
+    selectedLanguageRef.current = lang
+    setLanguage(lang) // WebSocket経由でサーバーに通知
+  }, [setLanguage])
+
   // ボタンクリックで状態遷移を制御
   // 状態ごとのユーザー操作（タップ）をハンドリング
   const handleClick = useCallback(() => {
@@ -243,7 +262,13 @@ const AIChatButton = ({ autoStart = false, placement = 'floating', alwaysListen 
   ])
 
   return (
-    <AIChatButtonView placement={placement} voiceState={voiceState} onClick={handleClick} />
+    <AIChatButtonView
+      placement={placement}
+      voiceState={voiceState}
+      onClick={handleClick}
+      selectedLanguage={selectedLanguage}
+      onLanguageSelect={handleLanguageSelect}
+    />
   )
 }
 
