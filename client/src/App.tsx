@@ -1,84 +1,15 @@
 import { useEffect, useState } from 'react'
-import { GoogleMap, LoadScript, DirectionsRenderer, Marker } from '@react-google-maps/api'
-import AIChatButton from './components/AIChatButton'
-import DrivingSupportPanel from './components/DrivingSupportPanel'
+import { LoadScript } from '@react-google-maps/api'
+import AIChatButton from './components/aiChat/AIChatButton'
+import LeftPanel from './components/LeftPanel'
+import MapPanel from './components/MapPanel'
+import NavigationActionPanel from './components/NavigationActionPanel'
 import NavigationStartModal, { NavigationFormData } from './components/NavigationStartModal'
 import { useNavigation } from './hooks/useNavigation'
-import { QRCodeCanvas } from 'qrcode.react'
 import './App.css'
-
-const naviIcon = new URL('./icon/navi_icon.png', import.meta.url).href
 
 const GOOGLE_MAPS_API_KEY = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY || ''
 const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:3001'
-
-const defaultCenter = {
-  lat: 35.6762,
-  lng: 139.6503,
-}
-
-const mapContainerStyle = {
-  width: '100%',
-  height: '100%',
-}
-
-const defaultOptions = {
-  zoomControl: false,
-  streetViewControl: false,
-  mapTypeControl: false,
-  fullscreenControl: false,
-  disableDefaultUI: true,
-  styles: [
-    {
-      featureType: 'poi',
-      elementType: 'labels',
-      stylers: [{ visibility: 'off' }]
-    },
-    {
-      featureType: 'transit',
-      elementType: 'labels',
-      stylers: [{ visibility: 'off' }]
-    },
-    {
-      featureType: 'road',
-      elementType: 'geometry',
-      stylers: [
-        { color: '#2d2d2d' },
-        { weight: 1 }
-      ]
-    },
-    {
-      featureType: 'road.highway',
-      elementType: 'geometry',
-      stylers: [
-        { color: '#3d3d3d' },
-        { weight: 2 }
-      ]
-    },
-    {
-      featureType: 'water',
-      elementType: 'geometry',
-      stylers: [{ color: '#1a1a2e' }]
-    },
-    {
-      featureType: 'landscape',
-      elementType: 'geometry',
-      stylers: [{ color: '#2d2d2d' }]
-    },
-    {
-      featureType: 'all',
-      elementType: 'labels.text.fill',
-      stylers: [{ color: '#ffffff' }]
-    },
-    {
-      featureType: 'all',
-      elementType: 'labels.text.stroke',
-      stylers: [{ color: '#000000' }]
-    }
-  ],
-  tilt: 45,
-  heading: 0,
-}
 
 function App() {
   const [isNavigating, setIsNavigating] = useState(false)
@@ -211,125 +142,25 @@ function App() {
     <LoadScript googleMapsApiKey={GOOGLE_MAPS_API_KEY} libraries={['places']}>
       <div className={`app-container grid-layout ${isNavigating && googleMapsNavUrl ? 'navigating-mode' : ''}`}>
         {/* 左: ミッションリストと運転サポート（縦並び）- ナビゲーション中は非表示 */}
-        {!isNavigating && (
-          <div className="left-panel w-full">
-            {missionSteps.length > 0 && (
-              <div className="mission-list-panel">
-                <h2 className="mission-list-title">ミッションリスト</h2>
-                <ul className="mission-list">
-                  {missionSteps.map((step, index) => (
-                    <li key={index} className="mission-item">
-                      {step}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            <DrivingSupportPanel
-              onStartNavigation={handleOpenNavigationModal}
-              isNavigating={isNavigating}
-            />
-          </div>
-        )}
-
-        {/* ナビゲーション中: 左カラム - ミッションリストと運転サポート */}
-        {isNavigating && (
-          <div className="left-panel w-full">
-            {missionSteps.length > 0 && (
-              <div className="mission-list-panel">
-                <h2 className="mission-list-title">ミッションリスト</h2>
-                <ul className="mission-list">
-                  {missionSteps.map((step, index) => (
-                    <li key={index} className="mission-item">
-                      {step}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            <div className="ai-consult-card">
-              <div className="ai-consult-title">AIに相談（音声）</div>
-              <div className="ai-consult-subtitle">
-                運転中の疑問を話しかけてください
-              </div>
-              <div className="ai-consult-action">
-                <AIChatButton autoStart={isNavigating} placement="inline" alwaysListen={true} />
-              </div>
-            </div>
-
-            <DrivingSupportPanel
-              onStartNavigation={handleOpenNavigationModal}
-              isNavigating={isNavigating}
-            />
-          </div>
-        )}
+        <LeftPanel
+          isNavigating={isNavigating}
+          missionSteps={missionSteps}
+          onStartNavigation={handleOpenNavigationModal}
+        />
 
         {/* 中央: 地図（ナビゲーション中は非表示） */}
         {!isNavigating && (
-          <div className="center-panel" style={{ display: 'flex', flexDirection: 'column' }}>
-            <div style={{ flex: 1 }}>
-              <GoogleMap
-              mapContainerStyle={mapContainerStyle}
-              center={currentLocation || defaultCenter}
-              zoom={currentLocation ? 18 : 10}
-              options={defaultOptions}
-              tilt={45}
-            >
-              {currentLocation && typeof google !== 'undefined' && (
-                <Marker
-                  position={currentLocation}
-                  icon={{
-                    url: naviIcon,
-                    scaledSize: new google.maps.Size(48, 48),
-                    anchor: new google.maps.Point(24, 24),
-                  }}
-                />
-              )}
-              {directions && <DirectionsRenderer directions={directions} />}
-            </GoogleMap>
-            </div>
-          </div>
+          <MapPanel currentLocation={currentLocation} directions={directions} />
         )}
 
         {/* 右: Google Maps ナビ開始ボタン（ナビゲーション中のみ表示） */}
         {isNavigating && googleMapsNavUrl && (
-          <div className="map-nav-button-container">
-            <button
-              className="google-maps-nav-button"
-              onClick={openGoogleMapsPopup}
-            >
-              🗺️ Google Mapsで案内開始
-            </button>
-
-            <div className="qr-section">
-              <div className="qr-section-title">QRコード（URL読み込み）</div>
-              <input
-                className="qr-url-input"
-                type="url"
-                inputMode="url"
-                value={qrUrl}
-                onChange={(e) => setQrUrl(e.target.value)}
-                placeholder="https://..."
-              />
-              {qrUrl.trim() && (
-                <div className="qr-code-and-link">
-                  <div className="qr-code-wrapper">
-                    <QRCodeCanvas value={qrUrl.trim()} size={220} includeMargin />
-                  </div>
-                  <a
-                    className="qr-open-link"
-                    href={qrUrl.trim()}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    このURLを開く
-                  </a>
-                </div>
-              )}
-            </div>
-          </div>
+          <NavigationActionPanel
+            googleMapsNavUrl={googleMapsNavUrl}
+            qrUrl={qrUrl}
+            onQrUrlChange={setQrUrl}
+            onOpenGoogleMaps={openGoogleMapsPopup}
+          />
         )}
 
         <NavigationStartModal
