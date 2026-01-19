@@ -6,21 +6,22 @@ export const chatApi = {
     audioData: string,
     audioFormat: string,
     callbacks: {
-      onTranscription?: (text: string) => void;
+      onTranscription?: (text: string, language?: string) => void;
       onChunk?: (chunk: string) => void;
       onAudio?: (url: string, index?: number) => void;
-      onTtsText?: (text: string, index?: number) => void; // Browser TTS
+      onTtsText?: (text: string, index?: number, language?: string) => void; // Browser TTS with language
       onDone?: (content: string) => void;
       onError?: (error: string) => void;
     },
-    ttsMode: 'browser' | 'qwen' = 'browser'
+    ttsMode: 'browser' | 'qwen' = 'browser',
+    language?: string // 言語ヒント（オプション）
   ): Promise<void> {
     const response = await fetch(`${API_URL}/api/voice/chat`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ audioData, audioFormat, ttsMode }),
+      body: JSON.stringify({ audioData, audioFormat, ttsMode, language }),
     });
 
     if (!response.ok) {
@@ -50,7 +51,7 @@ export const chatApi = {
 
             switch (data.type) {
               case "transcription":
-                callbacks.onTranscription?.(data.text);
+                callbacks.onTranscription?.(data.text, data.language);
                 break;
               case "text":
                 callbacks.onChunk?.(data.content);
@@ -59,8 +60,8 @@ export const chatApi = {
                 callbacks.onAudio?.(data.url, data.index);
                 break;
               case "tts_text":
-                // Browser TTS: text to be spoken by the browser
-                callbacks.onTtsText?.(data.text, data.index);
+                // Browser TTS: text to be spoken by the browser with language
+                callbacks.onTtsText?.(data.text, data.index, data.language);
                 break;
               case "done":
                 callbacks.onDone?.(data.content);

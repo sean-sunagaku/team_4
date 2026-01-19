@@ -21,6 +21,7 @@ const WS_BASE_URLS = {
 const ASR_MODEL = 'qwen3-asr-flash-realtime';
 
 interface RealtimeSessionConfig {
+  language?: string;  // ASR言語設定（デフォルト: 'ja'）
   onTranscript: (text: string, isFinal: boolean) => void;
   onError: (error: string) => void;
   onConnected?: () => void;
@@ -36,6 +37,9 @@ export function createRealtimeASRSession(config: RealtimeSessionConfig) {
   // Model name is passed as query parameter
   const wsUrl = `${baseUrl}?model=${ASR_MODEL}`;
 
+  // 言語設定（デフォルト: 日本語）
+  const language = config.language || 'ja';
+
   let ws: WebSocket | null = null;
   let isSessionReady = false;
   let eventCounter = 0;
@@ -44,7 +48,7 @@ export function createRealtimeASRSession(config: RealtimeSessionConfig) {
   const generateEventId = () => `event_${Date.now()}_${++eventCounter}`;
 
   const connect = () => {
-    console.log(`Connecting to DashScope ASR: ${wsUrl}`);
+    console.log(`Connecting to DashScope ASR: ${wsUrl} (language: ${language})`);
 
     ws = new WebSocket(wsUrl, {
       headers: {
@@ -54,9 +58,9 @@ export function createRealtimeASRSession(config: RealtimeSessionConfig) {
     });
 
     ws.on('open', () => {
-      console.log('Realtime ASR WebSocket connected');
+      console.log(`Realtime ASR WebSocket connected (language: ${language})`);
 
-      // Send session.update to configure Japanese language
+      // Send session.update to configure language
       // Based on DashScope SDK: TranscriptionParams(language='ja', sample_rate=16000, input_audio_format='pcm')
       const sessionUpdate = {
         event_id: generateEventId(),
@@ -64,7 +68,7 @@ export function createRealtimeASRSession(config: RealtimeSessionConfig) {
         session: {
           modalities: ['text'],  // Output modalities
           input_audio_transcription: {
-            language: 'ja',  // Japanese
+            language: language,  // 動的言語設定
           },
           turn_detection: {
             type: 'server_vad',
@@ -74,7 +78,7 @@ export function createRealtimeASRSession(config: RealtimeSessionConfig) {
         },
       };
 
-      console.log('Sending session.update for Japanese:', JSON.stringify(sessionUpdate));
+      console.log(`Sending session.update for ${language}:`, JSON.stringify(sessionUpdate));
       ws?.send(JSON.stringify(sessionUpdate));
     });
 
