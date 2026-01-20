@@ -12,8 +12,13 @@ export interface LatLng {
   lng: number
 }
 
+export interface RouteLocation {
+  address: string
+  location: LatLng
+}
+
 export const useNavigation = () => {
-  const [currentLocation] = useState<LatLng | null>(null)
+  const [currentLocation, setCurrentLocation] = useState<LatLng | null>(null)
   const [directions, setDirections] = useState<google.maps.DirectionsResult | null>(null)
   const [routeInfo, setRouteInfo] = useState<RouteInfo | null>(null)
   const geocodeAddress = useCallback(async (address: string): Promise<LatLng | null> => {
@@ -78,11 +83,78 @@ export const useNavigation = () => {
     setRouteInfo(null)
   }, [])
 
+  // APIレスポンスの location を使ってルートを計算（waypoints対応）
+  const calculateRouteFromLocations = useCallback(
+    async (
+      origin: RouteLocation,
+      destination: RouteLocation,
+      waypoints?: RouteLocation[]
+    ) => {
+      try {
+        // 現在地を更新
+        setCurrentLocation(origin.location)
+
+        const directionsService = new google.maps.DirectionsService()
+
+        const waypointsForApi = waypoints?.map((wp) => ({
+          location: wp.location,
+          stopover: true,
+        }))
+
+        directionsService.route(
+          {
+            origin: origin.location,
+            destination: destination.location,
+            waypoints: waypointsForApi,
+            travelMode: google.maps.TravelMode.DRIVING,
+            unitSystem: google.maps.UnitSystem.METRIC,
+            optimizeWaypoints: false, // 順序を維持
+          },
+          (result, status) => {
+            if (status === google.maps.DirectionsStatus.OK && result) {
+              setDirections(result)
+
+              // ルート情報を抽出（全体の距離・時間を計算）
+              const route = result.routes[0]
+              let totalDistance = 0
+              let totalDuration = 0
+              const allSteps: string[] = []
+
+              route.legs.forEach((leg) => {
+                totalDistance += leg.distance?.value || 0
+                totalDuration += leg.duration?.value || 0
+                leg.steps.forEach((step) => {
+                  if (step.instructions) {
+                    allSteps.push(step.instructions)
+                  }
+                })
+              })
+
+              const info: RouteInfo = {
+                distance: `${(totalDistance / 1000).toFixed(1)} km`,
+                duration: `${Math.round(totalDuration / 60)} 分`,
+                steps: allSteps,
+              }
+              setRouteInfo(info)
+            } else {
+              console.error('ルート計算に失敗しました:', status)
+            }
+          }
+        )
+      } catch (error) {
+        console.error('ルート計算エラー:', error)
+      }
+    },
+    []
+  )
+
   return {
     currentLocation,
     directions,
     routeInfo,
     calculateRoute,
+    calculateRouteFromLocations,
     clearRoute,
+    setCurrentLocation,
   }
 }

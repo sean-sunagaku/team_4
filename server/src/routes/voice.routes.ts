@@ -10,7 +10,7 @@ import { qwenASRService } from "../services/qwen-asr-service.js";
 import { qwenLLMService } from "../services/qwen-llm-service.js";
 import { qwenTTSService } from "../services/qwen-tts-service.js";
 import { localTTSService } from "../services/local-tts-service.js";
-import { buildContext, buildSystemPrompt } from "../services/context-builder.js";
+import { buildContext } from "../services/context-builder.js";
 import {
   ANONYMOUS_USER_ID,
   getLocation,
@@ -18,6 +18,7 @@ import {
   USE_LOCAL_TTS,
 } from "../config/app.config.js";
 import { TEXT_PATTERNS, TIMING_CONSTANTS, WAKE_WORD_PATTERNS } from "../config/constants.js";
+import { detectLanguage } from "../services/language-detection-service.js";
 import type { Location, TTSMode } from "../types/common.types.js";
 
 const voiceRoutes = new Hono();
@@ -62,6 +63,7 @@ voiceRoutes.post("/chat", async (c) => {
   let conversationId: string | undefined;
   let ttsMode: TTSMode;
   let location: Location | undefined;
+  let requestLanguage: string | undefined;
 
   try {
     const body = await c.req.json();
@@ -70,6 +72,7 @@ voiceRoutes.post("/chat", async (c) => {
     conversationId = body.conversationId;
     ttsMode = body.ttsMode || TTS_MODE;
     location = body.location;
+    requestLanguage = body.language;
   } catch {
     return c.json({ error: "Invalid request body" }, 400);
   }
@@ -102,8 +105,17 @@ voiceRoutes.post("/chat", async (c) => {
       const userText = asrResult.text;
       console.log("ASR transcription completed:", userText);
 
+      const detectedLang = detectLanguage(userText);
+      console.log(
+        `Detected language: ${detectedLang} (hint: ${requestLanguage || "none"}, text: "${userText.slice(0, 20)}")`
+      );
+
       await stream.writeSSE({
-        data: JSON.stringify({ type: "transcription", text: userText }),
+        data: JSON.stringify({
+          type: "transcription",
+          text: userText,
+          language: detectedLang,
+        }),
       });
 
       // Get or create conversation
@@ -126,7 +138,12 @@ voiceRoutes.post("/chat", async (c) => {
       const effectiveLocation = getLocation(location);
       const [existingMessages, contextResult] = await Promise.all([
         chatService.getMessages(convId),
-        buildContext({ content: userText, location: effectiveLocation }),
+        buildContext({
+          content: userText,
+          location: effectiveLocation,
+          language: detectedLang,
+          skipWebSearch: true,
+        }),
       ]);
 
       const aiMessages = [
@@ -164,22 +181,29 @@ voiceRoutes.post("/chat", async (c) => {
               type: "tts_text",
               text: textOnly,
               index: index,
+              language: detectedLang,
             }),
           });
-          console.log(`TTS[${index}] sent to browser`);
+          console.log(`TTS[${index}] sent to browser (lang: ${detectedLang})`);
           return;
         }
 
-        const ttsResult = await ttsService.synthesizeSpeech(textOnly);
+        const ttsResult = await ttsService.synthesizeSpeech(
+          textOnly,
+          undefined,
+          undefined,
+          detectedLang
+        );
         if (ttsResult.success && ttsResult.audioUrl) {
           await stream.writeSSE({
             data: JSON.stringify({
               type: "audio",
               url: ttsResult.audioUrl,
               index: index,
+              language: detectedLang,
             }),
           });
-          console.log(`TTS[${index}] completed`);
+          console.log(`TTS[${index}] completed (lang: ${detectedLang})`);
         } else {
           console.error(`TTS[${index}] failed:`, ttsResult.error);
         }

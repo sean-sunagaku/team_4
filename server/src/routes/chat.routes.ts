@@ -7,10 +7,7 @@ import { streamSSE } from "hono/streaming";
 import { chatService } from "../services/chat-service.js";
 import { ragService } from "../services/rag-service.js";
 import { qwenLLMService } from "../services/qwen-llm-service.js";
-import {
-  buildContext,
-  buildSystemPrompt,
-} from "../services/context-builder.js";
+import { buildContext } from "../services/context-builder.js";
 import { ANONYMOUS_USER_ID, getLocation } from "../config/app.config.js";
 import type { Location } from "../types/common.types.js";
 

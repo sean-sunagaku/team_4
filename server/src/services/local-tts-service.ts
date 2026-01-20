@@ -179,7 +179,8 @@ async function synthesizeWithEdgeTTS(
 export async function synthesizeSpeech(
   text: string,
   voice?: string,
-  _languageType?: string
+  _languageType?: string,
+  _languageCode?: string
 ): Promise<TTSResult> {
   if (!text || text.trim().length === 0) {
     return { success: false, error: 'Text is required for TTS' };

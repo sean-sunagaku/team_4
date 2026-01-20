@@ -44,7 +44,13 @@ export const TTS_MODES = {
 // Wake Word Patterns
 // ============================================
 
-export const WAKE_WORD_PATTERNS = ["ドライバ", "どらいば", "drivab"] as const;
+export const WAKE_WORD_PATTERNS = [
+  "ドライバ",
+  "どらいば",
+  "drivab",
+  "driver",
+  "buddy",
+] as const;
 
 // ============================================
 // Text Patterns
