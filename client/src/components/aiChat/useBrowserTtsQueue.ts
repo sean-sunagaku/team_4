@@ -2,12 +2,25 @@ import { useCallback, useRef } from 'react'
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
 import { VoiceState } from './aiChatTypes'
 
+// 言語コードからTTS言語コードへのマッピング
+const getTtsLangCode = (lang?: string): string => {
+  const langMap: Record<string, string> = {
+    ja: 'ja-JP',
+    en: 'en-US',
+    zh: 'zh-CN',
+    ko: 'ko-KR',
+    ru: 'ru-RU',
+    ar: 'ar-SA',
+  }
+  return langMap[lang || 'ja'] || 'ja-JP'
+}
+
 // Web Speech API（ブラウザTTS）を順序通りに再生するためのキュー管理フック
 export const useBrowserTtsQueue = (
   setVoiceState: Dispatch<SetStateAction<VoiceState>>,
   returnToIdleOrListeningRef: MutableRefObject<() => void>
 ) => {
-  const browserTtsQueueRef = useRef<{ text: string; index: number }[]>([])
+  const browserTtsQueueRef = useRef<{ text: string; index: number; language?: string }[]>([])
   const isBrowserSpeakingRef = useRef(false)
   const nextBrowserTtsIndexRef = useRef(0)
 
@@ -29,14 +42,17 @@ export const useBrowserTtsQueue = (
       )
 
       const utterance = new SpeechSynthesisUtterance(nextItem.text)
-      utterance.lang = 'ja-JP'
+      const ttsLang = getTtsLangCode(nextItem.language)
+      utterance.lang = ttsLang
       utterance.rate = 1.0
       utterance.pitch = 1.0
 
+      // 言語に合った音声を選択
       const voices = window.speechSynthesis.getVoices()
-      const japaneseVoice = voices.find((voice) => voice.lang.includes('ja'))
-      if (japaneseVoice) {
-        utterance.voice = japaneseVoice
+      const langPrefix = ttsLang.split('-')[0] // 'ja-JP' -> 'ja'
+      const matchingVoice = voices.find((voice) => voice.lang.includes(langPrefix))
+      if (matchingVoice) {
+        utterance.voice = matchingVoice
       }
 
       const handleFinish = () => {
@@ -52,14 +68,14 @@ export const useBrowserTtsQueue = (
       utterance.onerror = handleFinish
 
       window.speechSynthesis.speak(utterance)
-      console.log(`Browser TTS[${nextItem.index}]: "${nextItem.text.slice(0, 30)}..."`)
+      console.log(`Browser TTS[${nextItem.index}] (${ttsLang}): "${nextItem.text.slice(0, 30)}..."`)
     }
   }, [setVoiceState, returnToIdleOrListeningRef])
 
-  // 読み上げテキストをキューに積む
+  // 読み上げテキストをキューに積む（言語指定可能）
   const queueBrowserTts = useCallback(
-    (text: string, index: number) => {
-      browserTtsQueueRef.current.push({ text, index })
+    (text: string, index: number, language?: string) => {
+      browserTtsQueueRef.current.push({ text, index, language })
       speakNextBrowserTts()
     },
     [speakNextBrowserTts]
