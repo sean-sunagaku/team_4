@@ -7,9 +7,8 @@ import { WAKE_WORD_PATTERNS } from "../config/constants.js";
 import {
   detectLanguage,
   isLanguageConfident,
-  type SupportedLanguage,
 } from "../services/language-detection-service.js";
-import type { WebSocketData } from "../types/common.types.js";
+import type { WebSocketData, SupportedLanguage } from "../types/common.types.js";
 
 /**
  * Check for wake word in transcribed text
@@ -32,7 +31,7 @@ export const websocketHandler = {
 
     ws.data = {
       currentLanguage: initialLanguage,
-      session: null,
+      session: undefined,
       isFirstTranscript: true,
     };
 
@@ -42,12 +41,17 @@ export const websocketHandler = {
 
       return qwenRealtimeService.createRealtimeASRSession({
         language,
-        onTranscript: (text: string, isFinal: boolean) => {
+        onTranscript: (text: string, isFinal: boolean, emotion?: string) => {
           const currentLang = ws.data.currentLanguage || language;
           console.log(
-            `ASR transcript: "${text}" (final: ${isFinal}, lang: ${currentLang})`
+            `ASR transcript: "${text}" (final: ${isFinal}, lang: ${currentLang}, emotion: ${emotion || 'none'})`
           );
           const detected = checkWakeWord(text);
+
+          // 感情を保存（最新の感情を保持）
+          if (emotion) {
+            ws.data.latestEmotion = emotion;
+          }
 
           if (ws.data.isFirstTranscript && text.length >= 2) {
             const detectedLang = detectLanguage(text);
@@ -77,6 +81,7 @@ export const websocketHandler = {
               isFinal,
               wakeWordDetected: detected,
               language: currentLang,
+              emotion: emotion || ws.data.latestEmotion || null,
             })
           );
         },
@@ -132,4 +137,3 @@ export const websocketHandler = {
   },
 };
 
-export { checkWakeWord };

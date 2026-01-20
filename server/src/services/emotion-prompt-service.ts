@@ -44,22 +44,18 @@ export function getEmotionPrompt(emotion: string | null | undefined): string {
 }
 
 /**
- * 感情が有効な値かどうかを確認
- * @param emotion - 確認する感情文字列
- * @returns 有効なEmotionTypeの場合true
+ * 感情が有効な値かどうかを確認（内部使用）
  */
-export function isValidEmotion(emotion: string | null | undefined): emotion is EmotionType {
+function isValidEmotion(emotion: string | null | undefined): emotion is EmotionType {
   if (!emotion) return false;
   return ['neutral', 'happy', 'sad', 'angry', 'fear', 'disgust', 'surprise'].includes(emotion);
 }
 
 /**
- * テキストから感情を推測（テキストベースの感情分析）
+ * テキストから感情を推測（内部使用）
  * ASRが感情を返さない場合やneutralの場合のフォールバック
- * @param text - 分析するテキスト
- * @returns 推測された感情タイプ
  */
-export function detectEmotionFromText(text: string): EmotionType {
+function detectEmotionFromText(text: string): EmotionType {
   const lowerText = text.toLowerCase();
 
   // Happy: 感謝、喜び、ポジティブな表現
@@ -184,11 +180,3 @@ export function getEmotionTTSConfig(emotion: string | null | undefined): Emotion
   if (!emotion) return EMOTION_TTS_CONFIG.neutral;
   return EMOTION_TTS_CONFIG[emotion as EmotionType] || EMOTION_TTS_CONFIG.neutral;
 }
-
-export const emotionPromptService = {
-  getEmotionPrompt,
-  isValidEmotion,
-  getEmotionTTSConfig,
-  detectEmotionFromText,
-  determineEmotion,
-};
