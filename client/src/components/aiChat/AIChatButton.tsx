@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from 'react'
+import { useState, useRef, useCallback, useEffect, MutableRefObject } from 'react'
 import AIChatButtonView from './AIChatButtonView'
 import { VoiceState, SupportedLanguage } from './aiChatTypes'
 import { blobToBase64, float32ToPCM16Base64, playNotificationSound } from './aiChatUtils'
@@ -44,8 +44,8 @@ const AIChatButton = ({ autoStart = false, placement = 'floating', alwaysListen 
   const alwaysListenRef = useRef(alwaysListen)
   // 再生完了後に idle か listening に戻すための関数を保持
   const returnToIdleOrListeningRef = useRef<() => void>(() => setVoiceState('idle'))
-  // 感情を保存するためのref（useWakeWordListenerから同期される）
-  const emotionRef = useRef<string | null>(null)
+  // useWakeWordListenerからの感情refを参照するための中間ref（sendVoiceMessage内で使用）
+  const latestEmotionRefRef = useRef<MutableRefObject<string | null> | null>(null)
 
   const {
     audioQueueRef,
@@ -75,11 +75,13 @@ const AIChatButton = ({ autoStart = false, placement = 'floating', alwaysListen 
 
       // 現在のASR言語をヒントとして渡す
       const languageHint = selectedLanguageRef.current
-      // WebSocket ASRで検出された感情を取得（emotionRefはuseWakeWordListenerから同期される）
-      const detectedEmotion = emotionRef.current
-      console.log(`Sending voice message with emotion: ${detectedEmotion || 'none'}`)
+      // WebSocket ASRで検出された感情を取得
+      const detectedEmotion = latestEmotionRefRef.current?.current ?? null
+      // ⚡ ASRスキップ最適化: WebSocket ASRで蓄積された転写を取得
+      const preTranscript = getAndResetAccumulatedTranscriptRef.current()
+      console.log(`Sending voice message with emotion: ${detectedEmotion || 'none'}, pre-transcript: ${preTranscript ? `"${preTranscript.slice(0, 30)}..."` : 'none'}`)
 
-      await chatApi.sendVoiceMessage(audioData, 'webm', {
+      await chatApi.sendVoiceMessage(preTranscript ? undefined : audioData, 'webm', {
         onTranscription: (text, language) => {
           console.log(`Transcription (${language || 'unknown'}):`, text)
           // 検出言語を保存 + 国旗UIを更新
@@ -114,7 +116,7 @@ const AIChatButton = ({ autoStart = false, placement = 'floating', alwaysListen 
           console.error('Voice chat error:', error)
           setVoiceState('idle')
         },
-      }, "qwen", languageHint, detectedEmotion) // Use Qwen TTS with language hint and detected emotion
+      }, "qwen", languageHint, detectedEmotion, preTranscript || undefined) // Use Qwen TTS with language hint, detected emotion, and pre-transcript
     } catch (error) {
       console.error('Failed to send voice message:', error)
       setVoiceState('idle')
@@ -141,7 +143,7 @@ const AIChatButton = ({ autoStart = false, placement = 'floating', alwaysListen 
   })
 
   // WebSocket ASR を使った wake word 待機
-  const { startListening, stopListening, cleanupWakeWord, setLanguage, latestEmotionRef } = useWakeWordListener({
+  const { startListening, stopListening, cleanupWakeWord, setLanguage, latestEmotionRef, getAndResetAccumulatedTranscript } = useWakeWordListener({
     apiBaseUrl: API_BASE_URL,
     streamRef,
     audioContextRef,
@@ -153,6 +155,10 @@ const AIChatButton = ({ autoStart = false, placement = 'floating', alwaysListen 
     playWakeSound,
     float32ToPCM16Base64,
   })
+  // sendVoiceMessage内で使用するためのref更新
+  const getAndResetAccumulatedTranscriptRef = useRef(getAndResetAccumulatedTranscript)
+  getAndResetAccumulatedTranscriptRef.current = getAndResetAccumulatedTranscript
+  latestEmotionRefRef.current = latestEmotionRef
 
   // 完全クリーンアップ（ストリームも含む）
   const cleanup = useCallback(() => {
@@ -183,17 +189,6 @@ const AIChatButton = ({ autoStart = false, placement = 'floating', alwaysListen 
       }
     }
   }, [startListening, alwaysListen])
-
-  // latestEmotionRefからemotionRefへの同期（useWakeWordListenerの感情を参照可能にする）
-  useEffect(() => {
-    // インターバルでlatestEmotionRefの変更を監視してemotionRefに同期
-    const syncInterval = setInterval(() => {
-      if (latestEmotionRef.current !== emotionRef.current) {
-        emotionRef.current = latestEmotionRef.current
-      }
-    }, 100) // 100msごとに同期
-    return () => clearInterval(syncInterval)
-  }, [latestEmotionRef])
 
   // 初回マウント時に自動起動（autoStart/alwaysListen）
   const alwaysListenPropRef = useRef(alwaysListen)
