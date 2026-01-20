@@ -13,56 +13,14 @@ const mapContainerStyle = {
   height: '100%',
 }
 
-const defaultOptions = {
-  zoomControl: false,
+// 明るいスタイル（デフォルト）
+const defaultOptions: google.maps.MapOptions = {
+  zoomControl: true,
   streetViewControl: false,
   mapTypeControl: false,
   fullscreenControl: false,
-  disableDefaultUI: true,
-  styles: [
-    {
-      featureType: 'poi',
-      elementType: 'labels',
-      stylers: [{ visibility: 'off' }],
-    },
-    {
-      featureType: 'transit',
-      elementType: 'labels',
-      stylers: [{ visibility: 'off' }],
-    },
-    {
-      featureType: 'road',
-      elementType: 'geometry',
-      stylers: [{ color: '#2d2d2d' }, { weight: 1 }],
-    },
-    {
-      featureType: 'road.highway',
-      elementType: 'geometry',
-      stylers: [{ color: '#3d3d3d' }, { weight: 2 }],
-    },
-    {
-      featureType: 'water',
-      elementType: 'geometry',
-      stylers: [{ color: '#1a1a2e' }],
-    },
-    {
-      featureType: 'landscape',
-      elementType: 'geometry',
-      stylers: [{ color: '#2d2d2d' }],
-    },
-    {
-      featureType: 'all',
-      elementType: 'labels.text.fill',
-      stylers: [{ color: '#ffffff' }],
-    },
-    {
-      featureType: 'all',
-      elementType: 'labels.text.stroke',
-      stylers: [{ color: '#000000' }],
-    },
-  ],
-  tilt: 45,
-  heading: 0,
+  disableDefaultUI: false,
+  // ダークテーマのスタイルを削除して標準の明るい地図に
 }
 
 type MapPanelProps = {
@@ -72,14 +30,13 @@ type MapPanelProps = {
 
 const MapPanel = ({ currentLocation, directions }: MapPanelProps) => {
   return (
-    <div className="center-panel" style={{ display: 'flex', flexDirection: 'column' }}>
-      <div style={{ flex: 1 }}>
+    <div className="center-panel" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <div style={{ flex: 1, minHeight: 0 }}>
         <GoogleMap
           mapContainerStyle={mapContainerStyle}
           center={currentLocation || defaultCenter}
-          zoom={currentLocation ? 18 : 10}
+          zoom={currentLocation ? 16 : 12}
           options={defaultOptions}
-          tilt={45}
         >
           {currentLocation && typeof google !== 'undefined' && (
             <Marker

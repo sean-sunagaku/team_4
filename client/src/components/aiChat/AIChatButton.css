@@ -1,8 +1,8 @@
 .ai-chat-button-container {
-  position: absolute;
-  bottom: 20px;
-  right: 20px;
-  z-index: 10;
+  position: fixed;
+  bottom: 50px;
+  right: 80px;
+  z-index: 1000;
 }
 
 .ai-chat-button-container--inline {
@@ -15,12 +15,12 @@
 }
 
 .ai-chat-button {
-  width: 64px !important;
-  height: 64px !important;
-  min-width: 64px;
-  min-height: 64px;
-  max-width: 64px;
-  max-height: 64px;
+  width: 56px !important;
+  height: 56px !important;
+  min-width: 56px;
+  min-height: 56px;
+  max-width: 56px;
+  max-height: 56px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -29,47 +29,22 @@
   border-radius: 50%;
   cursor: pointer;
   position: relative;
-  overflow: visible;
-  transition: transform 0.2s ease, background-color 0.3s ease;
-  box-shadow:
-    0 4px 16px rgba(0, 0, 0, 0.2),
-    0 0 0 0 rgba(255, 255, 255, 0.4),
-    0 0 0 0 rgba(255, 255, 255, 0.3);
-  animation: pulseShadow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  overflow: hidden;
+  transition: transform 0.2s ease;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
+  animation: none;
   box-sizing: border-box;
+  padding: 0;
 }
 
-.ai-chat-button::before {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.4);
-  transform: translate(-50%, -50%) scale(1);
-  animation: ripple 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-  z-index: -1;
-}
-
+.ai-chat-button::before,
 .ai-chat-button::after {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.2);
-  transform: translate(-50%, -50%) scale(1);
-  animation: ripple 2s cubic-bezier(0.4, 0, 0.6, 1) infinite 0.5s;
-  z-index: -2;
+  display: none;
 }
 
 .ai-chat-button:hover {
   transform: scale(1.08);
-  background: #f0f0f0;
+  background: #3d8ee6;
 }
 
 .ai-chat-button:active {
@@ -83,7 +58,7 @@
 
 /* Recording state */
 .ai-chat-button--recording {
-  background: #ef4444 !important;
+  background: transparent !important;
   animation: recordingPulse 1s ease-in-out infinite !important;
 }
 
@@ -98,7 +73,7 @@
 }
 
 .ai-chat-button--recording .star-icon {
-  filter: brightness(0) invert(1);
+  /* アイコンはそのまま表示 */
 }
 
 /* Processing state */
@@ -115,7 +90,7 @@
 
 /* Speaking state */
 .ai-chat-button--speaking {
-  background: #3b82f6 !important;
+  background: transparent !important;
   animation: speakingPulse 1.5s ease-in-out infinite !important;
 }
 
@@ -131,17 +106,17 @@
 
 /* Listening state (waiting for wake word) */
 .ai-chat-button--listening {
-  background: #10b981 !important;
+  background: transparent !important;
   animation: listeningPulse 2s ease-in-out infinite !important;
 }
 
 .ai-chat-button--listening::before {
-  background: rgba(16, 185, 129, 0.4);
+  background: rgba(74, 158, 255, 0.4);
   animation: ripple 2s ease-out infinite;
 }
 
 .ai-chat-button--listening::after {
-  background: rgba(16, 185, 129, 0.2);
+  background: rgba(74, 158, 255, 0.2);
   animation: ripple 2s ease-out infinite 0.7s;
 }
 
@@ -149,24 +124,27 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 100%;
+  height: 100%;
 }
 
 .star-icon--listening {
-  filter: brightness(0) invert(1);
   animation: listeningBreathe 2s ease-in-out infinite;
 }
 
 .listening-text {
-  background: #10b981 !important;
+  background: #4A9EFF !important;
 }
 
 .star-icon {
   z-index: 1;
   position: relative;
-  animation: starPulse 2s ease-in-out infinite;
-  width: 60%;
-  height: 60%;
-  object-fit: contain;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+  transform: scale(1);
+  transition: opacity 0.15s ease;
 }
 
 /* Spinner */
@@ -223,7 +201,14 @@
   padding: 4px 10px;
   border-radius: 12px;
   white-space: nowrap;
-  animation: fadeInUp 0.3s ease-out;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.15s ease, visibility 0.15s ease;
+}
+
+.recording-indicator--visible {
+  opacity: 1;
+  visibility: visible;
 }
 
 /* Keyframes */
@@ -241,21 +226,21 @@
 @keyframes pulseShadow {
   0% {
     box-shadow:
-      0 4px 16px rgba(0, 0, 0, 0.2),
-      0 0 0 0 rgba(255, 255, 255, 0.4),
-      0 0 0 0 rgba(255, 255, 255, 0.3);
+      0 4px 16px rgba(74, 158, 255, 0.4),
+      0 0 0 0 rgba(74, 158, 255, 0.4),
+      0 0 0 0 rgba(74, 158, 255, 0.3);
   }
   50% {
     box-shadow:
-      0 4px 16px rgba(0, 0, 0, 0.3),
-      0 0 0 8px rgba(255, 255, 255, 0),
-      0 0 0 16px rgba(255, 255, 255, 0);
+      0 4px 16px rgba(74, 158, 255, 0.5),
+      0 0 0 8px rgba(74, 158, 255, 0),
+      0 0 0 16px rgba(74, 158, 255, 0);
   }
   100% {
     box-shadow:
-      0 4px 16px rgba(0, 0, 0, 0.2),
-      0 0 0 0 rgba(255, 255, 255, 0.4),
-      0 0 0 0 rgba(255, 255, 255, 0.3);
+      0 4px 16px rgba(74, 158, 255, 0.4),
+      0 0 0 0 rgba(74, 158, 255, 0.4),
+      0 0 0 0 rgba(74, 158, 255, 0.3);
   }
 }
 
@@ -310,11 +295,11 @@
 @keyframes listeningPulse {
   0%, 100% {
     transform: scale(1);
-    box-shadow: 0 4px 16px rgba(16, 185, 129, 0.4);
+    box-shadow: 0 4px 16px rgba(74, 158, 255, 0.4);
   }
   50% {
     transform: scale(1.02);
-    box-shadow: 0 4px 20px rgba(16, 185, 129, 0.5);
+    box-shadow: 0 4px 20px rgba(74, 158, 255, 0.5);
   }
 }
 

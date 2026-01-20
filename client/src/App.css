@@ -1,10 +1,99 @@
+/* ルートコンテナ */
 .app-container {
-  position: relative;
+  display: grid;
+  grid-template-columns: 2fr 3fr;
+  height: 100vh;
   width: 100vw;
+  overflow: hidden;
+  background: #f0f2f5;
+}
+
+/* 左パネル */
+.left-panel {
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  gap: 16px;
+  overflow-y: auto;
+  background: transparent;
+}
+
+/* 地図パネル */
+.map-panel {
+  position: relative;
   height: 100vh;
   overflow: hidden;
 }
 
+/* 左パネル内の車パネル */
+.left-panel > .car-panel {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #ffffff;
+  border-radius: 20px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+}
+
+.left-panel > .car-panel .car-image {
+  width: 80%;
+  height: 80%;
+  object-fit: cover;
+}
+
+/* ナビ開始ボタン */
+.start-nav-button {
+  background: linear-gradient(135deg, #4285f4 0%, #34a853 100%);
+  color: white;
+  border: none;
+  padding: 16px 24px;
+  font-size: 1rem;
+  font-weight: 600;
+  border-radius: 14px;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(66, 133, 244, 0.3);
+  transition: all 0.2s ease;
+}
+
+.start-nav-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 24px rgba(66, 133, 244, 0.4);
+}
+
+.start-nav-button:active {
+  transform: translateY(0);
+}
+
+/* ナビボタンのコンテナ */
+.nav-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 110px;
+  justify-content: flex-end;
+}
+
+/* ホームに戻るボタン */
+.back-home-button {
+  background: #f5f7fa;
+  color: #333;
+  border: 2px solid #e0e0e0;
+  padding: 14px 24px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  border-radius: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.back-home-button:hover {
+  background: #e8eef5;
+  border-color: #ccc;
+}
+
+/* エラーメッセージ */
 .error-message {
   display: flex;
   flex-direction: column;
@@ -15,11 +104,10 @@
   color: white;
   text-align: center;
   padding: 2rem;
-  overflow-y: auto;
 }
 
 .error-message h1 {
-  font-size: 2rem;
+  font-size: 1.5rem;
   margin-bottom: 1.5rem;
 }
 
@@ -27,13 +115,12 @@
   background: rgba(255, 255, 255, 0.1);
   border-radius: 12px;
   padding: 2rem;
-  max-width: 600px;
+  max-width: 500px;
   text-align: left;
-  margin-top: 1rem;
 }
 
 .error-instructions p {
-  font-size: 1.1rem;
+  font-size: 1rem;
   margin-bottom: 1rem;
   opacity: 0.95;
 }
@@ -46,248 +133,61 @@
 
 .error-instructions li {
   margin-bottom: 0.5rem;
-  font-size: 1rem;
+  font-size: 0.95rem;
 }
 
 .error-instructions code {
   background: rgba(0, 0, 0, 0.3);
   padding: 2px 8px;
   border-radius: 4px;
-  font-family: 'Courier New', monospace;
-  font-size: 0.9rem;
-}
-
-.error-note {
-  margin-top: 1.5rem;
-  padding-top: 1rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.3);
-  font-size: 1rem;
-  opacity: 0.9;
-}
-
-/* グリッドレイアウト（デフォルトは2カラム: 左ミッション / 中央マップ） */
-.app-container.grid-layout {
-  display: grid;
-  --left-panel-width: 420px;
-  grid-template-columns: var(--left-panel-width) 1fr;
-  grid-template-rows: 1fr;
-}
-
-/* ナビゲーション中は2カラム（左: ミッションリスト / 右: Google Mapsボタン） */
-.app-container.grid-layout.navigating-mode {
-  grid-template-columns: var(--left-panel-width) 1fr;
-}
-
-
-/* 左パネル（ミッションリスト + 運転サポート縦並び） */
-.left-panel {
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-  border-right: 1px solid rgba(255, 255, 255, 0.1);
-  overflow: hidden;
-}
-
-/* 中央パネル（マップ） */
-.center-panel {
-  position: relative;
-  height: 100vh;
-}
-
-/* ミッションリストパネル（左上） */
-.mission-list-panel {
-  background: transparent;
-  padding: 16px;
-  flex-shrink: 0;
-  max-height: 40%;
-  overflow-y: auto;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.mission-list-title {
-  color: #fff;
-  font-size: 1.2rem;
-  font-weight: bold;
-  margin: 0 0 12px 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.mission-list-title::before {
-  content: "📋";
-}
-
-.mission-list {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-}
-
-.mission-item {
-  background: rgba(255, 255, 255, 0.05);
-  border-left: 3px solid #667eea;
-  padding: 12px;
-  margin-bottom: 8px;
-  border-radius: 0 8px 8px 0;
-  color: #e0e0e0;
-  font-size: 0.9rem;
-  line-height: 1.5;
-}
-
-.mission-item:last-child {
-  margin-bottom: 0;
-}
-
-/* ナビ中: AI相談カード（運転サポートの上） */
-.ai-consult-card {
-  padding: 14px 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.04);
-}
-
-.ai-consult-title {
-  color: #fff;
-  font-size: 1rem;
-  font-weight: 800;
-  margin-bottom: 6px;
-  letter-spacing: 0.02em;
-}
-
-.ai-consult-subtitle {
-  color: rgba(255, 255, 255, 0.75);
+  font-family: monospace;
   font-size: 0.85rem;
-  line-height: 1.4;
-  margin-bottom: 12px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: clip;
 }
 
-.ai-consult-action {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+/* レスポンシブ */
+@media (max-width: 900px) {
+  .app-container {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+  }
+
+  .left-panel {
+    max-height: 50vh;
+  }
+
+  .map-panel {
+    height: 50vh;
+  }
 }
 
-/* 右側 Google Maps ナビボタンコンテナ */
-.map-nav-button-container {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 100vh;
-  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-  gap: 20px;
-  padding: 32px 20px;
-  box-sizing: border-box;
-}
-
-.google-maps-nav-button {
-  background: linear-gradient(135deg, #4285f4 0%, #34a853 100%);
-  color: white;
-  border: none;
-  padding: 20px 40px;
-  font-size: 1.3rem;
-  font-weight: bold;
-  border-radius: 12px;
-  cursor: pointer;
-  box-shadow: 0 4px 20px rgba(66, 133, 244, 0.4);
-  transition: transform 0.2s, box-shadow 0.2s;
-}
-
-.google-maps-nav-button:hover {
-  transform: scale(1.05);
-  box-shadow: 0 6px 30px rgba(66, 133, 244, 0.6);
-}
-
-.google-maps-nav-button:active {
-  transform: scale(0.98);
-}
-
-/* QR表示 */
-.qr-section {
-  width: min(520px, 92vw);
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 14px;
-  padding: 16px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
-}
-
-.qr-section-title {
-  color: rgba(255, 255, 255, 0.92);
-  font-weight: 700;
-  font-size: 0.95rem;
-  margin-bottom: 10px;
-  letter-spacing: 0.02em;
-}
-
-.qr-url-input {
-  width: 100%;
-  box-sizing: border-box;
-  background: rgba(0, 0, 0, 0.25);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  color: #fff;
-  border-radius: 10px;
-  padding: 10px 12px;
-  font-size: 0.95rem;
-  outline: none;
-}
-
-.qr-url-input::placeholder {
-  color: rgba(255, 255, 255, 0.45);
-}
-
-.qr-url-input:focus {
-  border-color: rgba(66, 133, 244, 0.65);
-  box-shadow: 0 0 0 3px rgba(66, 133, 244, 0.15);
-}
-
-.qr-code-and-link {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  margin-top: 14px;
-}
-
-.qr-code-wrapper {
-  background: #ffffff;
-  border-radius: 14px;
-  padding: 10px;
-}
-
-.qr-open-link {
-  color: rgba(255, 255, 255, 0.9);
-  text-decoration: none;
-  font-weight: 600;
-  font-size: 0.95rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.25);
-  padding-bottom: 2px;
-}
-
-.qr-open-link:hover {
-  color: #ffffff;
-  border-bottom-color: rgba(255, 255, 255, 0.55);
-}
-
-/* ミッションリストのスクロールバースタイル */
-.mission-list-panel::-webkit-scrollbar {
+/* スクロールバースタイル */
+.left-panel::-webkit-scrollbar {
   width: 6px;
 }
 
-.mission-list-panel::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.05);
+.left-panel::-webkit-scrollbar-track {
+  background: transparent;
 }
 
-.mission-list-panel::-webkit-scrollbar-thumb {
-  background: rgba(102, 126, 234, 0.5);
+.left-panel::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
   border-radius: 3px;
 }
 
-.mission-list-panel::-webkit-scrollbar-thumb:hover {
-  background: rgba(102, 126, 234, 0.7);
+.left-panel::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.25);
 }
 
+/* アニメーション */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.left-panel > * {
+  animation: fadeIn 0.4s ease-out;
+}
