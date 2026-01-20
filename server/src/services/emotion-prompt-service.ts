@@ -44,26 +44,6 @@ export function getEmotionPrompt(emotion: string | null | undefined): string {
 }
 
 /**
- * 感情に対応する絵文字を取得（UIでの表示用）
- * @param emotion - ASRから取得した感情タイプ
- * @returns 感情を表す絵文字
- */
-export function getEmotionEmoji(emotion: string | null | undefined): string {
-  if (!emotion) return '';
-
-  const emojis: Record<string, string> = {
-    neutral: '',
-    happy: '😊',
-    sad: '😢',
-    angry: '😠',
-    fear: '😨',
-    disgust: '😖',
-    surprise: '😮',
-  };
-  return emojis[emotion] || '';
-}
-
-/**
  * 感情が有効な値かどうかを確認
  * @param emotion - 確認する感情文字列
  * @returns 有効なEmotionTypeの場合true
@@ -71,26 +51,6 @@ export function getEmotionEmoji(emotion: string | null | undefined): string {
 export function isValidEmotion(emotion: string | null | undefined): emotion is EmotionType {
   if (!emotion) return false;
   return ['neutral', 'happy', 'sad', 'angry', 'fear', 'disgust', 'surprise'].includes(emotion);
-}
-
-/**
- * 感情の日本語ラベルを取得
- * @param emotion - ASRから取得した感情タイプ
- * @returns 感情の日本語名
- */
-export function getEmotionLabel(emotion: string | null | undefined): string {
-  if (!emotion) return '';
-
-  const labels: Record<string, string> = {
-    neutral: '普通',
-    happy: '嬉しい',
-    sad: '悲しい',
-    angry: '怒り',
-    fear: '不安',
-    disgust: '不快',
-    surprise: '驚き',
-  };
-  return labels[emotion] || emotion;
 }
 
 /**
@@ -199,89 +159,36 @@ export function determineEmotion(asrEmotion: string | null | undefined, text: st
 /**
  * TTS用の感情設定
  * Browser TTS: pitch（0.5-2.0）とrate（0.5-2.0）を調整
- * Qwen TTS: テキストを感情豊かに変換
  */
 export interface EmotionTTSConfig {
   pitch: number;      // Browser TTS: 声の高さ (1.0 = 標準)
   rate: number;       // Browser TTS: 話速 (1.0 = 標準)
-  prefix?: string;    // Qwen TTS: 文頭に追加する感情表現
-  suffix?: string;    // Qwen TTS: 文末に追加する感情表現
 }
 
 const EMOTION_TTS_CONFIG: Record<EmotionType, EmotionTTSConfig> = {
   neutral: { pitch: 1.0, rate: 1.0 },
-  happy: {
-    pitch: 1.15,   // 少し高め
-    rate: 1.1,    // 少し速め
-    prefix: '',   // 「わぁ！」など
-  },
-  sad: {
-    pitch: 0.9,   // 少し低め
-    rate: 0.85,   // ゆっくり
-    prefix: '',
-  },
-  angry: {
-    pitch: 1.0,   // 通常
-    rate: 1.05,   // やや速め
-    prefix: '',
-  },
-  fear: {
-    pitch: 1.1,   // やや高め
-    rate: 0.9,    // やや遅め
-    prefix: '',
-  },
-  disgust: {
-    pitch: 0.95,  // やや低め
-    rate: 0.95,   // やや遅め
-    prefix: '',
-  },
-  surprise: {
-    pitch: 1.2,   // 高め
-    rate: 1.15,   // 速め
-    prefix: '',
-  },
+  happy: { pitch: 1.15, rate: 1.1 },     // 少し高め、少し速め
+  sad: { pitch: 0.9, rate: 0.85 },       // 少し低め、ゆっくり
+  angry: { pitch: 1.0, rate: 1.05 },     // 通常、やや速め
+  fear: { pitch: 1.1, rate: 0.9 },       // やや高め、やや遅め
+  disgust: { pitch: 0.95, rate: 0.95 },  // やや低め、やや遅め
+  surprise: { pitch: 1.2, rate: 1.15 },  // 高め、速め
 };
 
 /**
  * 感情に応じたTTS設定を取得
  * @param emotion - 感情タイプ
- * @returns TTS設定（pitch, rate, prefix, suffix）
+ * @returns TTS設定（pitch, rate）
  */
 export function getEmotionTTSConfig(emotion: string | null | undefined): EmotionTTSConfig {
   if (!emotion) return EMOTION_TTS_CONFIG.neutral;
   return EMOTION_TTS_CONFIG[emotion as EmotionType] || EMOTION_TTS_CONFIG.neutral;
 }
 
-/**
- * テキストに感情表現を追加（Qwen TTS用）
- * TTSエンジンがより感情豊かに読み上げるようにテキストを調整
- * @param text - 元のテキスト
- * @param emotion - 感情タイプ
- * @returns 感情表現が追加されたテキスト
- */
-export function addEmotionToText(text: string, emotion: string | null | undefined): string {
-  if (!emotion || emotion === 'neutral') return text;
-
-  const config = getEmotionTTSConfig(emotion);
-  let result = text;
-
-  if (config.prefix) {
-    result = config.prefix + result;
-  }
-  if (config.suffix) {
-    result = result + config.suffix;
-  }
-
-  return result;
-}
-
 export const emotionPromptService = {
   getEmotionPrompt,
-  getEmotionEmoji,
   isValidEmotion,
-  getEmotionLabel,
   getEmotionTTSConfig,
-  addEmotionToText,
   detectEmotionFromText,
   determineEmotion,
 };

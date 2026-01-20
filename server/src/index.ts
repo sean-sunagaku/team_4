@@ -804,13 +804,14 @@ app.get("/api/rag/search", async (c) => {
 
 // Voice chat endpoint - receives audio, returns text + audio response
 app.post("/api/voice/chat", async (c) => {
-  let audioData: string;
+  let audioData: string | undefined;
   let audioFormat: string;
   let conversationId: string | undefined;
   let ttsMode: string;
   let location: Location | undefined;
   let requestLanguage: string | undefined; // クライアントから渡される言語ヒント
   let userEmotion: string | undefined; // クライアントから渡される感情（WebSocket ASRで検出）
+  let preTranscript: string | undefined; // WebSocket ASRからの事前転写（ASRスキップ用）
 
   try {
     const body = await c.req.json();
@@ -822,12 +823,14 @@ app.post("/api/voice/chat", async (c) => {
     location = body.location;
     requestLanguage = body.language; // クライアントからの言語ヒント
     userEmotion = body.emotion; // クライアントからの感情（WebSocket ASRで検出された感情）
+    preTranscript = body.transcript; // WebSocket ASRからの事前転写
   } catch {
     return c.json({ error: "Invalid request body" }, 400);
   }
 
-  if (!audioData) {
-    return c.json({ error: "Audio data is required" }, 400);
+  // 事前転写がない場合は音声データが必須
+  if (!audioData && !preTranscript) {
+    return c.json({ error: "Audio data or transcript is required" }, 400);
   }
 
   // Determine TTS mode for this request
@@ -835,25 +838,54 @@ app.post("/api/voice/chat", async (c) => {
 
   return streamSSE(c, async (stream) => {
     try {
-      // Step 1: ASR - Convert audio to text
-      console.log("Starting ASR transcription...");
-      const asrResult = await qwenASRService.transcribeAudio(
-        audioData,
-        audioFormat,
-      );
+      // ===== Performance Timing =====
+      const timings = {
+        start: Date.now(),
+        asrEnd: 0,
+        ragEnd: 0,
+        llmFirstChunk: 0,
+        ttsFirstComplete: 0,
+      };
 
-      if (!asrResult.success || !asrResult.text) {
+      // Step 1: ASR - Convert audio to text (skip if preTranscript provided)
+      let userText: string;
+
+      if (preTranscript && preTranscript.trim().length > 0) {
+        // ⚡ ASR SKIP: クライアントからの事前転写を使用（WebSocket ASRで既に転写済み）
+        console.log(`⏱️ [PERF] ASR SKIPPED! Using pre-transcript from WebSocket ASR`);
+        userText = preTranscript;
+        timings.asrEnd = Date.now();
+        console.log(`⏱️ [PERF] ASR skip saved ~1800ms (total: ${timings.asrEnd - timings.start}ms)`);
+      } else if (audioData) {
+        // 通常のASR処理
+        console.log("⏱️ [PERF] Starting ASR transcription...");
+        const asrResult = await qwenASRService.transcribeAudio(
+          audioData,
+          audioFormat,
+        );
+        timings.asrEnd = Date.now();
+        console.log(`⏱️ [PERF] ASR completed in ${timings.asrEnd - timings.start}ms`);
+
+        if (!asrResult.success || !asrResult.text) {
+          await stream.writeSSE({
+            data: JSON.stringify({
+              type: "error",
+              message: asrResult.error || "Failed to transcribe audio",
+            }),
+          });
+          return;
+        }
+        userText = asrResult.text;
+        console.log("ASR transcription completed:", userText);
+      } else {
         await stream.writeSSE({
           data: JSON.stringify({
             type: "error",
-            message: asrResult.error || "Failed to transcribe audio",
+            message: "No audio data or transcript provided",
           }),
         });
         return;
       }
-
-      const userText = asrResult.text;
-      console.log("ASR transcription completed:", userText);
 
       // 言語検出: 常にテキストから検出（ヒントは参考程度）
       const detectedLang = detectLanguage(userText);
@@ -907,21 +939,41 @@ app.post("/api/voice/chat", async (c) => {
         console.log(`Voice: Car search triggered: ${userText}`);
       }
 
-      // 並列でRAG検索を実行
-      // - 共有ナレッジは常に検索（過去の会話）
-      // - 取扱説明書は車関連キーワードがある場合のみ
-      const [sharedKnowledgeResults, carManualResults] = await Promise.all([
-        ragService.searchSharedConversations(userText, { topK: 3 }).catch((err) => {
-          console.error("Shared knowledge search failed:", err);
-          return [];
-        }),
-        needsRAGSearch(userText)
-          ? ragService.search(userText, { topK: 3 }).catch((err) => {
-              console.error("Car manual search failed:", err);
-              return [];
-            })
-          : Promise.resolve([]),
-      ]);
+      // 低遅延最適化: 短い感情的なメッセージはRAG検索をスキップ
+      // 質問でない短いメッセージ（挨拶、感謝、感情表現など）はRAG不要
+      const isSimpleMessage = userText.length < 30 &&
+        !userText.includes('？') &&
+        !userText.includes('?') &&
+        !userText.match(/どう|なに|いつ|どこ|なぜ|教えて|方法|やり方|仕方/);
+
+      let sharedKnowledgeResults: any[] = [];
+      let carManualResults: any[] = [];
+
+      if (isSimpleMessage) {
+        // 短い感情的メッセージはRAGスキップで高速化
+        console.log(`⏱️ [PERF] RAG skipped (simple message: "${userText.slice(0, 20)}...")`);
+        timings.ragEnd = Date.now();
+      } else {
+        // 並列でRAG検索を実行
+        // - 共有ナレッジは常に検索（過去の会話）
+        // - 取扱説明書は車関連キーワードがある場合のみ
+        console.log("⏱️ [PERF] Starting RAG search...");
+        const ragStartTime = Date.now();
+        [sharedKnowledgeResults, carManualResults] = await Promise.all([
+          ragService.searchSharedConversations(userText, { topK: 3 }).catch((err) => {
+            console.error("Shared knowledge search failed:", err);
+            return [];
+          }),
+          needsRAGSearch(userText)
+            ? ragService.search(userText, { topK: 3 }).catch((err) => {
+                console.error("Car manual search failed:", err);
+                return [];
+              })
+            : Promise.resolve([]),
+        ]);
+        timings.ragEnd = Date.now();
+        console.log(`⏱️ [PERF] RAG search completed in ${timings.ragEnd - ragStartTime}ms`);
+      }
 
       // 過去の会話をコンテキストに追加
       if (sharedKnowledgeResults.length > 0) {
@@ -955,7 +1007,10 @@ app.post("/api/voice/chat", async (c) => {
       ];
 
       // Step 3: LLM - Generate response with streaming TTS
-      console.log("Starting LLM generation with streaming TTS...");
+      console.log("⏱️ [PERF] Starting LLM generation with streaming TTS...");
+      const llmStartTime = Date.now();
+      let llmFirstChunkLogged = false;
+      let ttsFirstCompleteLogged = false;
       let fullContent = "";
       let sentenceBuffer = "";
       let audioIndex = 0;
@@ -1035,8 +1090,16 @@ app.post("/api/voice/chat", async (c) => {
         }
 
         // Server-side TTS: synthesize audio and send URL (with language support)
+        const ttsStartTime = Date.now();
         const ttsResult = await ttsService.synthesizeSpeech(textOnly, undefined, undefined, detectedLang);
         if (ttsResult.success && ttsResult.audioUrl) {
+          // Track first TTS complete timing (TTFA - Time To First Audio)
+          if (!ttsFirstCompleteLogged) {
+            ttsFirstCompleteLogged = true;
+            timings.ttsFirstComplete = Date.now();
+            console.log(`⏱️ [PERF] ★ TTFA (first audio ready): ${timings.ttsFirstComplete - timings.start}ms`);
+            console.log(`⏱️ [PERF] TTS[${index}] synthesis took ${Date.now() - ttsStartTime}ms`);
+          }
           await stream.writeSSE({
             data: JSON.stringify({
               type: "audio",
@@ -1075,6 +1138,13 @@ app.post("/api/voice/chat", async (c) => {
 
       await qwenLLMService.sendMessageStream(aiMessages, {
         onChunk: async (chunk) => {
+          // Track first chunk timing
+          if (!llmFirstChunkLogged) {
+            llmFirstChunkLogged = true;
+            timings.llmFirstChunk = Date.now();
+            console.log(`⏱️ [PERF] LLM first chunk in ${timings.llmFirstChunk - llmStartTime}ms (total: ${timings.llmFirstChunk - timings.start}ms)`);
+          }
+
           fullContent += chunk;
           sentenceBuffer += chunk;
 
