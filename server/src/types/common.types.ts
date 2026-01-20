@@ -79,6 +79,7 @@ export interface ErrorStreamEvent extends BaseStreamEvent {
 export interface TranscriptionStreamEvent extends BaseStreamEvent {
   type: "transcription";
   text: string;
+  language?: string;
 }
 
 export interface ConversationStreamEvent extends BaseStreamEvent {
@@ -90,12 +91,14 @@ export interface AudioStreamEvent extends BaseStreamEvent {
   type: "audio";
   url: string;
   index: number;
+  language?: string;
 }
 
 export interface TTSTextStreamEvent extends BaseStreamEvent {
   type: "tts_text";
   text: string;
   index: number;
+  language?: string;
 }
 
 export type StreamEvent =
@@ -113,6 +116,13 @@ export type StreamEvent =
 
 export interface WebSocketData {
   session?: {
+    sendAudio: (audio: string) => void;
+    finishAudio: () => void;
+    close: () => void;
+  };
+  currentLanguage?: string;
+  isFirstTranscript?: boolean;
+  createSession?: (language: string) => {
     sendAudio: (audio: string) => void;
     finishAudio: () => void;
     close: () => void;
