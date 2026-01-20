@@ -309,11 +309,13 @@ export async function buildContext(options: ContextBuildOptions): Promise<BuiltC
         })
       : Promise.resolve({ success: false, query: searchQuery, results: [] } as SearchResponse),
 
-    // Always search shared knowledge (past conversations)
-    ragService.searchSharedConversations(content, { topK: 3 }).catch((err) => {
-      console.error("Shared knowledge search failed:", err);
-      return [];
-    }),
+    // Search shared knowledge (past conversations) - skip for simple messages
+    !skipRAGSearch
+      ? ragService.searchSharedConversations(content, { topK: 3 }).catch((err) => {
+          console.error("Shared knowledge search failed:", err);
+          return [];
+        })
+      : Promise.resolve([]),
 
     // Search car manual only if car-related and not skipped
     !skipRAGSearch && needsRAGSearch(content)
