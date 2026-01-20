@@ -7,7 +7,6 @@ type NavigationActionPanelProps = {
 }
 
 const NavigationActionPanel = ({
-  googleMapsNavUrl: _googleMapsNavUrl,
   qrUrl,
   onQrUrlChange,
   onOpenGoogleMaps,
