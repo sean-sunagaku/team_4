@@ -59,6 +59,10 @@ const AIChatButton = ({ autoStart = false, placement = 'floating', alwaysListen 
     resetBrowserTtsQueue,
   } = useBrowserTtsQueue(setVoiceState, returnToIdleOrListeningRef)
 
+  // 感情とtranscriptを参照するためのref（循環参照を避けるため）
+  const latestEmotionRefRef = useRef<React.MutableRefObject<string | null> | null>(null)
+  const getAndResetAccumulatedTranscriptRef = useRef<() => string>(() => '')
+
   // 音声送信
   // 録音した音声を API に送り、TTS を順次再生する
   const sendVoiceMessage = useCallback(async (audioBlob: Blob) => {
@@ -76,7 +80,7 @@ const AIChatButton = ({ autoStart = false, placement = 'floating', alwaysListen 
 
       // ⚡ ASRスキップ最適化: WebSocket ASRから事前転写を取得
       const preTranscript = getAndResetAccumulatedTranscriptRef.current()
-      const emotion = latestEmotionRef.current
+      const emotion = latestEmotionRefRef.current?.current ?? null
 
       // transcriptがある場合はASRスキップ（audioDataは送信するがサーバー側でスキップ）
       console.log(`⚡ Sending voice message (preTranscript: ${preTranscript ? `"${preTranscript.slice(0, 30)}..."` : 'none'}, emotion: ${emotion || 'none'})`)
@@ -120,7 +124,7 @@ const AIChatButton = ({ autoStart = false, placement = 'floating', alwaysListen 
             setVoiceState('idle')
           },
         },
-        "browser", // Use browser TTS mode
+        "qwen", // Use Qwen TTS mode
         languageHint,
         emotion,
         preTranscript || undefined
@@ -129,7 +133,7 @@ const AIChatButton = ({ autoStart = false, placement = 'floating', alwaysListen 
       console.error('Failed to send voice message:', error)
       setVoiceState('idle')
     }
-  }, [queueAudio, queueBrowserTts, resetAudioQueue, resetBrowserTtsQueue, latestEmotionRef])
+  }, [queueAudio, queueBrowserTts, resetAudioQueue, resetBrowserTtsQueue])
 
   // startListening用のref（循環参照を避けるため）
   const startListeningRef = useRef<() => void>(() => {})
@@ -171,8 +175,8 @@ const AIChatButton = ({ autoStart = false, placement = 'floating', alwaysListen 
     float32ToPCM16Base64,
   })
 
-  // getAndResetAccumulatedTranscript を最新で参照するためのref
-  const getAndResetAccumulatedTranscriptRef = useRef(getAndResetAccumulatedTranscript)
+  // refを更新（循環参照を避けるため、useWakeWordListener後に代入）
+  latestEmotionRefRef.current = latestEmotionRef
   getAndResetAccumulatedTranscriptRef.current = getAndResetAccumulatedTranscript
 
   // 完全クリーンアップ（ストリームも含む）

@@ -19,7 +19,7 @@ function App() {
   const [loadingStep, setLoadingStep] = useState<LoadingStep | null>(null)
   const [showPracticeSelector, setShowPracticeSelector] = useState(false)
   const [missionSteps, setMissionSteps] = useState<string[]>([])
-  const [googleMapsNavUrl, setGoogleMapsNavUrl] = useState<string | null>(null)
+  const [, setGoogleMapsNavUrl] = useState<string | null>(null)
   const [currentLocation, setCurrentLocation] = useState<string>('')
 
   const {
@@ -139,41 +139,41 @@ function App() {
     clearRoute()
   }
 
-  // Google Mapsをポップアップで開く
-  const openGoogleMapsPopup = () => {
-    if (googleMapsNavUrl) {
-      const screenWidth = window.screen.width
-      const screenHeight = window.screen.height
-      const windowWidth = Math.floor(screenWidth * 0.7)
-      const windowHeight = screenHeight
-      const left = Math.max(0, screenWidth - windowWidth)
-      const top = 0
+  // Google Mapsをポップアップで開く（将来使用予定）
+  // const openGoogleMapsPopup = () => {
+  //   if (googleMapsNavUrl) {
+  //     const screenWidth = window.screen.width
+  //     const screenHeight = window.screen.height
+  //     const windowWidth = Math.floor(screenWidth * 0.7)
+  //     const windowHeight = screenHeight
+  //     const left = Math.max(0, screenWidth - windowWidth)
+  //     const top = 0
 
-      const popup = window.open(
-        googleMapsNavUrl,
-        'googleMapsNav',
-        [
-          `width=${windowWidth}`,
-          `height=${windowHeight}`,
-          `left=${left}`,
-          `top=${top}`,
-          'resizable=yes',
-          'scrollbars=yes',
-          'toolbar=yes',
-          'location=yes',
-          'menubar=no',
-          'status=no',
-        ].join(',')
-      )
+  //     const popup = window.open(
+  //       googleMapsNavUrl,
+  //       'googleMapsNav',
+  //       [
+  //         `width=${windowWidth}`,
+  //         `height=${windowHeight}`,
+  //         `left=${left}`,
+  //         `top=${top}`,
+  //         'resizable=yes',
+  //         'scrollbars=yes',
+  //         'toolbar=yes',
+  //         'location=yes',
+  //         'menubar=no',
+  //         'status=no',
+  //       ].join(',')
+  //     )
 
-      if (!popup) {
-        window.location.assign(googleMapsNavUrl)
-        return
-      }
+  //     if (!popup) {
+  //       window.location.assign(googleMapsNavUrl)
+  //       return
+  //     }
 
-      popup.focus()
-    }
-  }
+  //     popup.focus()
+  //   }
+  // }
 
   if (!GOOGLE_MAPS_API_KEY) {
     return (
