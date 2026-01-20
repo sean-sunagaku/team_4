@@ -74,47 +74,62 @@ const AIChatButton = ({ autoStart = false, placement = 'floating', alwaysListen 
       // 現在のASR言語をヒントとして渡す
       const languageHint = selectedLanguageRef.current
 
-      await chatApi.sendVoiceMessage(audioData, 'webm', {
-        onTranscription: (text, language) => {
-          console.log(`Transcription (${language || 'unknown'}):`, text)
-          // 検出言語を保存 + 国旗UIを更新
-          if (language) {
-            selectedLanguageRef.current = language as SupportedLanguage
-            setSelectedLanguage(language as SupportedLanguage)
-          }
-        },
-        onChunk: (chunk) => {
-          console.log('Response chunk:', chunk)
-        },
-        // サーバーTTSの音声URLを順次再生
-        onAudio: (url, index) => {
-          console.log(`Audio[${index}]:`, url)
-          setVoiceState('speaking')
-          queueAudio(url, index ?? 0)
-        },
-        // ブラウザTTSのテキストを順次再生（サーバーから言語情報があればそれを使用）
-        onTtsText: (text, index, language) => {
-          const lang = language || selectedLanguageRef.current
-          console.log(`Browser TTS[${index}] (${lang}):`, text.slice(0, 30))
-          queueBrowserTts(text, index ?? 0, lang)
-        },
-        onDone: (content) => {
-          console.log('Done:', content)
-          if (audioQueueRef.current.length === 0 && !isPlayingRef.current &&
-              browserTtsQueueRef.current.length === 0 && !isBrowserSpeakingRef.current) {
+      // ⚡ ASRスキップ最適化: WebSocket ASRから事前転写を取得
+      const preTranscript = getAndResetAccumulatedTranscriptRef.current()
+      const emotion = latestEmotionRef.current
+
+      // transcriptがある場合はASRスキップ（audioDataは送信するがサーバー側でスキップ）
+      console.log(`⚡ Sending voice message (preTranscript: ${preTranscript ? `"${preTranscript.slice(0, 30)}..."` : 'none'}, emotion: ${emotion || 'none'})`)
+
+      await chatApi.sendVoiceMessage(
+        preTranscript ? undefined : audioData, // transcriptがあればaudioDataは不要
+        'webm',
+        {
+          onTranscription: (text, language) => {
+            console.log(`Transcription (${language || 'unknown'}):`, text)
+            // 検出言語を保存 + 国旗UIを更新
+            if (language) {
+              selectedLanguageRef.current = language as SupportedLanguage
+              setSelectedLanguage(language as SupportedLanguage)
+            }
+          },
+          onChunk: (chunk) => {
+            console.log('Response chunk:', chunk)
+          },
+          // サーバーTTSの音声URLを順次再生
+          onAudio: (url, index) => {
+            console.log(`Audio[${index}]:`, url)
+            setVoiceState('speaking')
+            queueAudio(url, index ?? 0)
+          },
+          // ブラウザTTSのテキストを順次再生（サーバーから言語・感情情報を使用）
+          onTtsText: (text, index, language, pitch, rate) => {
+            const lang = language || selectedLanguageRef.current
+            console.log(`Browser TTS[${index}] (${lang}, pitch: ${pitch}, rate: ${rate}):`, text.slice(0, 30))
+            queueBrowserTts(text, index ?? 0, lang, pitch, rate)
+          },
+          onDone: (content) => {
+            console.log('Done:', content)
+            if (audioQueueRef.current.length === 0 && !isPlayingRef.current &&
+                browserTtsQueueRef.current.length === 0 && !isBrowserSpeakingRef.current) {
+              setVoiceState('idle')
+            }
+          },
+          onError: (error) => {
+            console.error('Voice chat error:', error)
             setVoiceState('idle')
-          }
+          },
         },
-        onError: (error) => {
-          console.error('Voice chat error:', error)
-          setVoiceState('idle')
-        },
-      }, "qwen", languageHint) // Use Qwen TTS with language hint
+        "browser", // Use browser TTS mode
+        languageHint,
+        emotion,
+        preTranscript || undefined
+      )
     } catch (error) {
       console.error('Failed to send voice message:', error)
       setVoiceState('idle')
     }
-  }, [queueAudio, queueBrowserTts, resetAudioQueue, resetBrowserTtsQueue])
+  }, [queueAudio, queueBrowserTts, resetAudioQueue, resetBrowserTtsQueue, latestEmotionRef])
 
   // startListening用のref（循環参照を避けるため）
   const startListeningRef = useRef<() => void>(() => {})
@@ -136,7 +151,14 @@ const AIChatButton = ({ autoStart = false, placement = 'floating', alwaysListen 
   })
 
   // WebSocket ASR を使った wake word 待機
-  const { startListening, stopListening, cleanupWakeWord, setLanguage } = useWakeWordListener({
+  const {
+    startListening,
+    stopListening,
+    cleanupWakeWord,
+    setLanguage,
+    latestEmotionRef,
+    getAndResetAccumulatedTranscript,
+  } = useWakeWordListener({
     apiBaseUrl: API_BASE_URL,
     streamRef,
     audioContextRef,
@@ -148,6 +170,10 @@ const AIChatButton = ({ autoStart = false, placement = 'floating', alwaysListen 
     playWakeSound,
     float32ToPCM16Base64,
   })
+
+  // getAndResetAccumulatedTranscript を最新で参照するためのref
+  const getAndResetAccumulatedTranscriptRef = useRef(getAndResetAccumulatedTranscript)
+  getAndResetAccumulatedTranscriptRef.current = getAndResetAccumulatedTranscript
 
   // 完全クリーンアップ（ストリームも含む）
   const cleanup = useCallback(() => {

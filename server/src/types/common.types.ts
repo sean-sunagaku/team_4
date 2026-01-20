@@ -114,19 +114,22 @@ export type StreamEvent =
 // WebSocket Types
 // ============================================
 
+export type SupportedLanguage = 'ja' | 'en' | 'zh' | 'ko' | 'ru' | 'ar';
+
+export interface ASRSession {
+  sendAudio: (audio: string) => void;
+  finishAudio: () => void;
+  close: () => void;
+  endSession?: () => void;
+  isReady?: () => boolean;
+}
+
 export interface WebSocketData {
-  session?: {
-    sendAudio: (audio: string) => void;
-    finishAudio: () => void;
-    close: () => void;
-  };
-  currentLanguage?: string;
+  session?: ASRSession;
+  currentLanguage?: SupportedLanguage;
   isFirstTranscript?: boolean;
-  createSession?: (language: string) => {
-    sendAudio: (audio: string) => void;
-    finishAudio: () => void;
-    close: () => void;
-  };
+  latestEmotion?: string | null;
+  createSession?: (language: SupportedLanguage) => ASRSession;
 }
 
 export interface WebSocketTranscriptMessage {

@@ -2,26 +2,29 @@ const API_URL = (import.meta as any).env?.VITE_API_URL || "http://localhost:3001
 
 export const chatApi = {
   // Voice chat - send audio and receive streaming response
+  // 注: transcriptが指定されると、サーバー側でASRをスキップして高速化
   async sendVoiceMessage(
-    audioData: string,
+    audioData: string | undefined, // transcriptがある場合はundefined可
     audioFormat: string,
     callbacks: {
       onTranscription?: (text: string, language?: string) => void;
       onChunk?: (chunk: string) => void;
       onAudio?: (url: string, index?: number) => void;
-      onTtsText?: (text: string, index?: number, language?: string) => void; // Browser TTS with language
+      onTtsText?: (text: string, index?: number, language?: string, pitch?: number, rate?: number) => void; // Browser TTS with language and emotion
       onDone?: (content: string) => void;
       onError?: (error: string) => void;
     },
     ttsMode: 'browser' | 'qwen' = 'browser',
-    language?: string // 言語ヒント（オプション）
+    language?: string, // 言語ヒント（オプション）
+    emotion?: string | null, // 感情（WebSocket ASRで検出された感情）
+    transcript?: string // WebSocket ASRからの事前転写（ASRスキップ用）
   ): Promise<void> {
     const response = await fetch(`${API_URL}/api/voice/chat`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ audioData, audioFormat, ttsMode, language }),
+      body: JSON.stringify({ audioData, audioFormat, ttsMode, language, emotion, transcript }),
     });
 
     if (!response.ok) {
@@ -60,8 +63,8 @@ export const chatApi = {
                 callbacks.onAudio?.(data.url, data.index);
                 break;
               case "tts_text":
-                // Browser TTS: text to be spoken by the browser with language
-                callbacks.onTtsText?.(data.text, data.index, data.language);
+                // Browser TTS: text to be spoken by the browser with language and emotion
+                callbacks.onTtsText?.(data.text, data.index, data.language, data.pitch, data.rate);
                 break;
               case "done":
                 callbacks.onDone?.(data.content);
