@@ -4,6 +4,11 @@
 
 import { qwenRealtimeService } from "../services/qwen-realtime-service.js";
 import { WAKE_WORD_PATTERNS } from "../config/constants.js";
+import {
+  detectLanguage,
+  isLanguageConfident,
+  type SupportedLanguage,
+} from "../services/language-detection-service.js";
 import type { WebSocketData } from "../types/common.types.js";
 
 /**
@@ -23,33 +28,75 @@ export const websocketHandler = {
   open(ws: { send: (msg: string) => void; data: WebSocketData }) {
     console.log("WebSocket client connected");
 
-    const session = qwenRealtimeService.createRealtimeASRSession({
-      onTranscript: (text: string, isFinal: boolean) => {
-        console.log(`ASR transcript: "${text}" (final: ${isFinal})`);
-        const detected = checkWakeWord(text);
-        ws.send(
-          JSON.stringify({
-            type: "transcript",
-            text,
-            isFinal,
-            wakeWordDetected: detected,
-          })
-        );
-      },
-      onError: (error: string) => {
-        console.error("ASR error:", error);
-        ws.send(JSON.stringify({ type: "error", error }));
-      },
-      onConnected: () => {
-        console.log("DashScope ASR session ready");
-        ws.send(JSON.stringify({ type: "ready" }));
-      },
-      onDisconnected: () => {
-        console.log("DashScope ASR session disconnected");
-      },
-    });
+    const initialLanguage: SupportedLanguage = "ja";
 
-    ws.data = { session };
+    ws.data = {
+      currentLanguage: initialLanguage,
+      session: null,
+      isFirstTranscript: true,
+    };
+
+    const createSession = (language: SupportedLanguage) => {
+      ws.data.currentLanguage = language;
+      ws.data.isFirstTranscript = true;
+
+      return qwenRealtimeService.createRealtimeASRSession({
+        language,
+        onTranscript: (text: string, isFinal: boolean) => {
+          const currentLang = ws.data.currentLanguage || language;
+          console.log(
+            `ASR transcript: "${text}" (final: ${isFinal}, lang: ${currentLang})`
+          );
+          const detected = checkWakeWord(text);
+
+          if (ws.data.isFirstTranscript && text.length >= 2) {
+            const detectedLang = detectLanguage(text);
+            if (
+              detectedLang !== currentLang &&
+              isLanguageConfident(text, detectedLang)
+            ) {
+              ws.data.isFirstTranscript = false;
+              console.log(
+                `Early language detection: ${currentLang} -> ${detectedLang} (text: "${text}")`
+              );
+              ws.send(
+                JSON.stringify({
+                  type: "language_change",
+                  currentLanguage: currentLang,
+                  detectedLanguage: detectedLang,
+                  text,
+                })
+              );
+            }
+          }
+
+          ws.send(
+            JSON.stringify({
+              type: "transcript",
+              text,
+              isFinal,
+              wakeWordDetected: detected,
+              language: currentLang,
+            })
+          );
+        },
+        onError: (error: string) => {
+          console.error("ASR error:", error);
+          ws.send(JSON.stringify({ type: "error", error }));
+        },
+        onConnected: () => {
+          const lang = ws.data.currentLanguage || language;
+          console.log(`DashScope ASR session ready (language: ${lang})`);
+          ws.send(JSON.stringify({ type: "ready", language: lang }));
+        },
+        onDisconnected: () => {
+          console.log("DashScope ASR session disconnected");
+        },
+      });
+    };
+
+    ws.data.session = createSession(initialLanguage);
+    ws.data.createSession = createSession;
   },
 
   message(
@@ -63,6 +110,16 @@ export const websocketHandler = {
         ws.data?.session?.sendAudio(data.audio);
       } else if (data.type === "finish") {
         ws.data?.session?.finishAudio();
+      } else if (data.type === "reconnect_with_language") {
+        const newLanguage = (data.language as SupportedLanguage) || "ja";
+        console.log(`Reconnecting with new language: ${newLanguage}`);
+        ws.data?.session?.close();
+        ws.data.currentLanguage = newLanguage;
+        ws.data.session = ws.data.createSession?.(newLanguage);
+      } else if (data.type === "set_language") {
+        const language = (data.language as SupportedLanguage) || "ja";
+        ws.data.currentLanguage = language;
+        console.log(`Language set to: ${language}`);
       }
     } catch (err) {
       console.error("WebSocket message error:", err);

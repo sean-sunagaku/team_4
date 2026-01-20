@@ -23,6 +23,7 @@ export interface Location {
 export interface ContextBuildOptions {
   content: string;
   location?: Location;
+  language?: string;
   skipWebSearch?: boolean;
   skipRAGSearch?: boolean;
 }
@@ -147,11 +148,23 @@ const RAG_KEYWORDS = [
 ];
 
 // ============================================
+// Language Instructions
+// ============================================
+
+const LANGUAGE_INSTRUCTIONS: Record<string, string> = {
+  ja: "日本語で簡潔に回答します。",
+  en: "Respond concisely in English.",
+  zh: "用简洁的中文回答。",
+  ko: "간결하게 한국어로 답변합니다.",
+  ru: "Отвечайте кратко на русском языке.",
+  ar: "أجب بإيجاز باللغة العربية.",
+};
+
+// ============================================
 // Cache for System Prompt
 // ============================================
 
-let cachedSystemPromptBase: string | null = null;
-let lastPromptCacheTime = 0;
+const cachedSystemPrompts: Record<string, { prompt: string; time: number }> = {};
 const PROMPT_CACHE_TTL = 60000; // 1 minute cache
 
 // ============================================
@@ -231,21 +244,24 @@ export function buildLocationQuery(content: string, location: Location): string 
 /**
  * Build system prompt with current date/time info (with caching)
  */
-export function buildSystemPrompt(): string {
+export function buildSystemPrompt(language: string = "ja"): string {
   const now = Date.now();
 
-  if (cachedSystemPromptBase && now - lastPromptCacheTime < PROMPT_CACHE_TTL) {
-    return cachedSystemPromptBase;
+  const cached = cachedSystemPrompts[language];
+  if (cached && now - cached.time < PROMPT_CACHE_TTL) {
+    return cached.prompt;
   }
 
   const datetime = getCurrentDateTime();
+  const langInstruction =
+    LANGUAGE_INSTRUCTIONS[language] || LANGUAGE_INSTRUCTIONS.ja;
 
-  cachedSystemPromptBase = `親切なAIアシスタントです。日本語で簡潔に回答します。
+  const prompt = `親切なAIアシスタントです。${langInstruction}
 現在: ${datetime.fullDate} ${datetime.time}（${datetime.dayOfWeek}）
 会話履歴を踏まえて回答してください。`;
 
-  lastPromptCacheTime = now;
-  return cachedSystemPromptBase;
+  cachedSystemPrompts[language] = { prompt, time: now };
+  return prompt;
 }
 
 // ============================================
@@ -256,9 +272,15 @@ export function buildSystemPrompt(): string {
  * Build context for AI chat (web search, RAG search, etc.)
  */
 export async function buildContext(options: ContextBuildOptions): Promise<BuiltContext> {
-  const { content, location, skipWebSearch = false, skipRAGSearch = false } = options;
+  const {
+    content,
+    location,
+    language = "ja",
+    skipWebSearch = false,
+    skipRAGSearch = false,
+  } = options;
 
-  let systemPrompt = buildSystemPrompt();
+  let systemPrompt = buildSystemPrompt(language);
 
   // Determine what searches are needed
   const shouldSearch = !skipWebSearch && (needsWebSearch(content) || needsCarSearch(content));
