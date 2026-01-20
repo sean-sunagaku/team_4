@@ -1,0 +1,141 @@
+.main-panel-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.main-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+  border-radius: 20px;
+  padding: 20px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+  box-sizing: border-box;
+}
+
+.app-logo {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #1a1a2e;
+  margin: 0 0 16px 0;
+  letter-spacing: -0.02em;
+}
+
+.mode-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.mode-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 8px;
+  background: #f8f9fb;
+  border: 1.5px solid #eef0f4;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-height: 100px;
+}
+
+.mode-card:hover {
+  background: #f0f3f7;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.mode-card.selected {
+  background: #e8f4fd;
+  border-color: #4a9eff;
+}
+
+.mode-card-placeholder {
+  background: #f8f9fb;
+  border: 1.5px solid #eef0f4;
+  border-radius: 12px;
+  min-height: 100px;
+  opacity: 0.6;
+}
+
+.mode-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #333;
+  text-align: center;
+  line-height: 1.2;
+  margin-bottom: 8px;
+}
+
+.mode-icon {
+  width: 48px;
+  height: 48px;
+}
+
+.mode-icon.person-icon {
+  width: 52px;
+  height: 52px;
+}
+
+.mode-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* 車の画像パネル */
+.car-panel {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #ffffff;
+  border-radius: 20px;
+  padding: 0;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+  box-sizing: border-box;
+  overflow: hidden;
+  min-height: 250px;
+}
+
+.car-image {
+  width: 80%;
+  height: 80%;
+  object-fit: cover;
+}
+
+/* アニメーション */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.main-panel {
+  animation: fadeInUp 0.35s ease-out;
+}
+
+.car-panel {
+  animation: fadeInUp 0.4s ease-out;
+  animation-delay: 0.1s;
+  animation-fill-mode: backwards;
+}
+
+.mode-card {
+  animation: fadeInUp 0.35s ease-out;
+  animation-fill-mode: backwards;
+}
+
+.mode-card:nth-child(1) { animation-delay: 0.08s; }
+.mode-card:nth-child(2) { animation-delay: 0.12s; }
+.mode-card:nth-child(3) { animation-delay: 0.16s; }

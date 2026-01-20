@@ -1,6 +1,7 @@
 import { VoiceState, SupportedLanguage, LANGUAGE_FLAGS } from './aiChatTypes'
 
-const aiIcon = new URL('../../icon/ai_icon.png', import.meta.url).href
+// public/icon.svg を使用
+const aiIcon = '/icon.svg'
 
 const LANGUAGES: SupportedLanguage[] = ['ja', 'en', 'zh']
 
@@ -66,12 +67,13 @@ const AIChatButtonView = ({
           {LANGUAGE_FLAGS[selectedLanguage]}
         </button>
       </div>
-      {voiceState === 'listening' && (
-        <div className="recording-indicator listening-text">待機中...</div>
-      )}
-      {voiceState === 'recording' && (
-        <div className="recording-indicator">録音中...</div>
-      )}
+      {/* テキストを常に表示してチラつき防止 */}
+      <div className={`recording-indicator listening-text ${voiceState === 'listening' ? 'recording-indicator--visible' : ''}`}>
+        待機中...
+      </div>
+      <div className={`recording-indicator ${voiceState === 'recording' ? 'recording-indicator--visible' : ''}`}>
+        録音中...
+      </div>
     </div>
   )
 }
