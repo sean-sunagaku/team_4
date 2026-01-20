@@ -9,19 +9,20 @@ export const chatApi = {
       onTranscription?: (text: string, language?: string) => void;
       onChunk?: (chunk: string) => void;
       onAudio?: (url: string, index?: number) => void;
-      onTtsText?: (text: string, index?: number, language?: string) => void; // Browser TTS with language
+      onTtsText?: (text: string, index?: number, language?: string, pitch?: number, rate?: number) => void; // Browser TTS with language and emotion
       onDone?: (content: string) => void;
       onError?: (error: string) => void;
     },
     ttsMode: 'browser' | 'qwen' = 'browser',
-    language?: string // 言語ヒント（オプション）
+    language?: string, // 言語ヒント（オプション）
+    emotion?: string | null // 感情（WebSocket ASRで検出された感情）
   ): Promise<void> {
     const response = await fetch(`${API_URL}/api/voice/chat`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ audioData, audioFormat, ttsMode, language }),
+      body: JSON.stringify({ audioData, audioFormat, ttsMode, language, emotion }),
     });
 
     if (!response.ok) {
@@ -60,8 +61,8 @@ export const chatApi = {
                 callbacks.onAudio?.(data.url, data.index);
                 break;
               case "tts_text":
-                // Browser TTS: text to be spoken by the browser with language
-                callbacks.onTtsText?.(data.text, data.index, data.language);
+                // Browser TTS: text to be spoken by the browser with language and emotion
+                callbacks.onTtsText?.(data.text, data.index, data.language, data.pitch, data.rate);
                 break;
               case "done":
                 callbacks.onDone?.(data.content);

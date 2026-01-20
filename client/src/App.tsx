@@ -156,7 +156,6 @@ function App() {
         {/* 右: Google Maps ナビ開始ボタン（ナビゲーション中のみ表示） */}
         {isNavigating && googleMapsNavUrl && (
           <NavigationActionPanel
-            googleMapsNavUrl={googleMapsNavUrl}
             qrUrl={qrUrl}
             onQrUrlChange={setQrUrl}
             onOpenGoogleMaps={openGoogleMapsPopup}

@@ -1,14 +1,12 @@
 import { QRCodeCanvas } from 'qrcode.react'
 
 type NavigationActionPanelProps = {
-  googleMapsNavUrl: string
   qrUrl: string
   onQrUrlChange: (value: string) => void
   onOpenGoogleMaps: () => void
 }
 
 const NavigationActionPanel = ({
-  googleMapsNavUrl,
   qrUrl,
   onQrUrlChange,
   onOpenGoogleMaps,

@@ -16,6 +16,7 @@ import { qwenTTSService } from "./services/qwen-tts-service.js";
 import { localTTSService } from "./services/local-tts-service.js";
 import { qwenRealtimeService } from "./services/qwen-realtime-service.js";
 import { detectLanguage, isLanguageConfident, type SupportedLanguage } from "./services/language-detection-service.js";
+import { getEmotionPrompt, getEmotionTTSConfig, determineEmotion } from "./services/emotion-prompt-service.js";
 import {
   MOCK_ENABLED,
   MOCK_LOCATION,
@@ -809,6 +810,7 @@ app.post("/api/voice/chat", async (c) => {
   let ttsMode: string;
   let location: Location | undefined;
   let requestLanguage: string | undefined; // クライアントから渡される言語ヒント
+  let userEmotion: string | undefined; // クライアントから渡される感情（WebSocket ASRで検出）
 
   try {
     const body = await c.req.json();
@@ -819,6 +821,7 @@ app.post("/api/voice/chat", async (c) => {
     ttsMode = body.ttsMode || TTS_MODE;
     location = body.location;
     requestLanguage = body.language; // クライアントからの言語ヒント
+    userEmotion = body.emotion; // クライアントからの感情（WebSocket ASRで検出された感情）
   } catch {
     return c.json({ error: "Invalid request body" }, 400);
   }
@@ -855,6 +858,12 @@ app.post("/api/voice/chat", async (c) => {
       // 言語検出: 常にテキストから検出（ヒントは参考程度）
       const detectedLang = detectLanguage(userText);
       console.log(`Detected language: ${detectedLang} (hint: ${requestLanguage || 'none'}, text: "${userText.slice(0, 20)}")`);
+
+      // 感情検出: ASR感情とテキスト分析を組み合わせて最終的な感情を決定
+      // userEmotionはクライアントから渡されたASR感情（WebSocket ASRで検出）
+      // テキストからも感情を分析し、より適切な感情を選択
+      const finalEmotion = determineEmotion(userEmotion, userText);
+      console.log(`Final emotion: ${finalEmotion} (client ASR: ${userEmotion || 'none'}, text analysis applied)`);
 
       // Send transcription to client with detected language
       await stream.writeSSE({
@@ -930,6 +939,15 @@ app.post("/api/voice/chat", async (c) => {
         console.log("Car manual results added to context");
       }
 
+      // 感情コンテキストを追加（ユーザーの感情に応じた応答指示）
+      if (finalEmotion && finalEmotion !== 'neutral') {
+        const emotionContext = getEmotionPrompt(finalEmotion);
+        if (emotionContext) {
+          systemPrompt += emotionContext;
+          console.log(`Emotion context added: ${finalEmotion}`);
+        }
+      }
+
       const aiMessages = [
         { role: "system" as const, content: systemPrompt },
         ...chatService.formatMessagesForAI(existingMessages),
@@ -999,15 +1017,20 @@ app.post("/api/voice/chat", async (c) => {
 
         // Browser TTS mode: send text directly for client-side speech synthesis
         if (useBrowserTts) {
+          // 感情に応じたTTS設定を取得（pitch, rate）
+          const ttsConfig = getEmotionTTSConfig(finalEmotion);
           await stream.writeSSE({
             data: JSON.stringify({
               type: "tts_text",
               text: textOnly,
               index: index,
               language: detectedLang, // 検出言語をクライアントに送信
+              emotion: finalEmotion,  // 感情情報（テキスト分析結果も反映）
+              pitch: ttsConfig.pitch, // 声の高さ
+              rate: ttsConfig.rate,   // 話速
             }),
           });
-          console.log(`TTS[${index}] sent to browser (lang: ${detectedLang})`);
+          console.log(`TTS[${index}] sent to browser (lang: ${detectedLang}, emotion: ${finalEmotion || 'none'}, pitch: ${ttsConfig.pitch}, rate: ${ttsConfig.rate})`);
           return;
         }
 
@@ -1363,6 +1386,7 @@ const server = Bun.serve({
         currentLanguage: initialLanguage,
         session: null,
         isFirstTranscript: true, // 早期言語検出用フラグ
+        latestEmotion: null as string | null, // 最新の感情を保存
       };
 
       // ASRセッション作成関数（言語変更時の再接続用）
@@ -1374,10 +1398,15 @@ const server = Bun.serve({
 
         return qwenRealtimeService.createRealtimeASRSession({
           language: language,
-          onTranscript: (text, isFinal) => {
+          onTranscript: (text, isFinal, emotion) => {
             const currentLang = ws.data.currentLanguage;
-            console.log(`ASR transcript: "${text}" (final: ${isFinal}, lang: ${currentLang})`);
+            console.log(`ASR transcript: "${text}" (final: ${isFinal}, lang: ${currentLang}, emotion: ${emotion || 'none'})`);
             const wakeWordDetected = checkWakeWord(text);
+
+            // 最新の感情を保存（isFinalでなくても更新）
+            if (emotion) {
+              ws.data.latestEmotion = emotion;
+            }
 
             // 早期言語検出（案2）: isFinalを待たずに検出し、遅延を削減
             if (ws.data.isFirstTranscript && text.length >= 2) {
@@ -1402,6 +1431,7 @@ const server = Bun.serve({
               isFinal,
               wakeWordDetected,
               language: currentLang,
+              emotion: emotion || ws.data.latestEmotion, // 感情情報を追加
             }));
           },
           onError: (error) => {

@@ -44,6 +44,8 @@ const AIChatButton = ({ autoStart = false, placement = 'floating', alwaysListen 
   const alwaysListenRef = useRef(alwaysListen)
   // 再生完了後に idle か listening に戻すための関数を保持
   const returnToIdleOrListeningRef = useRef<() => void>(() => setVoiceState('idle'))
+  // 感情を保存するためのref（useWakeWordListenerから同期される）
+  const emotionRef = useRef<string | null>(null)
 
   const {
     audioQueueRef,
@@ -73,6 +75,9 @@ const AIChatButton = ({ autoStart = false, placement = 'floating', alwaysListen 
 
       // 現在のASR言語をヒントとして渡す
       const languageHint = selectedLanguageRef.current
+      // WebSocket ASRで検出された感情を取得（emotionRefはuseWakeWordListenerから同期される）
+      const detectedEmotion = emotionRef.current
+      console.log(`Sending voice message with emotion: ${detectedEmotion || 'none'}`)
 
       await chatApi.sendVoiceMessage(audioData, 'webm', {
         onTranscription: (text, language) => {
@@ -92,11 +97,11 @@ const AIChatButton = ({ autoStart = false, placement = 'floating', alwaysListen 
           setVoiceState('speaking')
           queueAudio(url, index ?? 0)
         },
-        // ブラウザTTSのテキストを順次再生（サーバーから言語情報があればそれを使用）
-        onTtsText: (text, index, language) => {
+        // ブラウザTTSのテキストを順次再生（サーバーから言語・感情情報があればそれを使用）
+        onTtsText: (text, index, language, pitch, rate) => {
           const lang = language || selectedLanguageRef.current
-          console.log(`Browser TTS[${index}] (${lang}):`, text.slice(0, 30))
-          queueBrowserTts(text, index ?? 0, lang)
+          console.log(`Browser TTS[${index}] (${lang}, pitch: ${pitch || 1.0}, rate: ${rate || 1.0}):`, text.slice(0, 30))
+          queueBrowserTts(text, index ?? 0, lang, pitch, rate)
         },
         onDone: (content) => {
           console.log('Done:', content)
@@ -109,7 +114,7 @@ const AIChatButton = ({ autoStart = false, placement = 'floating', alwaysListen 
           console.error('Voice chat error:', error)
           setVoiceState('idle')
         },
-      }, "qwen", languageHint) // Use Qwen TTS with language hint
+      }, "qwen", languageHint, detectedEmotion) // Use Qwen TTS with language hint and detected emotion
     } catch (error) {
       console.error('Failed to send voice message:', error)
       setVoiceState('idle')
@@ -136,7 +141,7 @@ const AIChatButton = ({ autoStart = false, placement = 'floating', alwaysListen 
   })
 
   // WebSocket ASR を使った wake word 待機
-  const { startListening, stopListening, cleanupWakeWord, setLanguage } = useWakeWordListener({
+  const { startListening, stopListening, cleanupWakeWord, setLanguage, latestEmotionRef } = useWakeWordListener({
     apiBaseUrl: API_BASE_URL,
     streamRef,
     audioContextRef,
@@ -178,6 +183,17 @@ const AIChatButton = ({ autoStart = false, placement = 'floating', alwaysListen 
       }
     }
   }, [startListening, alwaysListen])
+
+  // latestEmotionRefからemotionRefへの同期（useWakeWordListenerの感情を参照可能にする）
+  useEffect(() => {
+    // インターバルでlatestEmotionRefの変更を監視してemotionRefに同期
+    const syncInterval = setInterval(() => {
+      if (latestEmotionRef.current !== emotionRef.current) {
+        emotionRef.current = latestEmotionRef.current
+      }
+    }, 100) // 100msごとに同期
+    return () => clearInterval(syncInterval)
+  }, [latestEmotionRef])
 
   // 初回マウント時に自動起動（autoStart/alwaysListen）
   const alwaysListenPropRef = useRef(alwaysListen)

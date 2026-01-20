@@ -22,7 +22,7 @@ const ASR_MODEL = 'qwen3-asr-flash-realtime';
 
 interface RealtimeSessionConfig {
   language?: string;  // ASR言語設定（デフォルト: 'ja'）
-  onTranscript: (text: string, isFinal: boolean) => void;
+  onTranscript: (text: string, isFinal: boolean, emotion?: string) => void;
   onError: (error: string) => void;
   onConnected?: () => void;
   onDisconnected?: () => void;
@@ -121,8 +121,9 @@ export function createRealtimeASRSession(config: RealtimeSessionConfig) {
           case 'conversation.item.input_audio_transcription.text':
             if (message.text || message.transcript) {
               const text = message.text || message.transcript;
-              console.log('Interim transcription:', text);
-              config.onTranscript(text, false);
+              const emotion = message.emotion as string | undefined;
+              console.log(`Interim transcription: "${text}" (emotion: ${emotion || 'none'})`);
+              config.onTranscript(text, false, emotion);
             }
             break;
 
@@ -130,8 +131,9 @@ export function createRealtimeASRSession(config: RealtimeSessionConfig) {
           case 'conversation.item.input_audio_transcription.completed':
             if (message.text || message.transcript) {
               const text = message.text || message.transcript;
-              console.log('Final transcription:', text);
-              config.onTranscript(text, true);
+              const emotion = message.emotion as string | undefined;
+              console.log(`Final transcription: "${text}" (emotion: ${emotion || 'none'})`);
+              config.onTranscript(text, true, emotion);
             }
             break;
 

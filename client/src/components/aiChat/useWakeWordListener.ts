@@ -35,6 +35,8 @@ export const useWakeWordListener = ({
   // クロージャ問題を回避するためのref
   const setSelectedLanguageRef = useRef(setSelectedLanguage)
   setSelectedLanguageRef.current = setSelectedLanguage
+  // 最新の感情を保存（ASRから検出された感情）
+  const latestEmotionRef = useRef<string | null>(null)
 
   // 手動で待受けを止める（録音切替やタップ時）
   // 待受け中の WS/Worklet を停止する
@@ -141,9 +143,15 @@ export const useWakeWordListener = ({
             }))
           } else if (data.type === 'transcript') {
             const lang = data.language || selectedLanguageRef.current
+            const emotion = data.emotion || null
             console.log(
-              `ASR transcript: "${data.text}" (final: ${data.isFinal}, wake: ${data.wakeWordDetected}, lang: ${lang})`
+              `ASR transcript: "${data.text}" (final: ${data.isFinal}, wake: ${data.wakeWordDetected}, lang: ${lang}, emotion: ${emotion})`
             )
+
+            // 最新の感情を保存（中間結果でも更新）
+            if (emotion) {
+              latestEmotionRef.current = emotion
+            }
 
             if (data.wakeWordDetected) {
               console.log('ウェイクワード検出！録音モードに切り替え...')
@@ -226,5 +234,6 @@ export const useWakeWordListener = ({
     stopListening,
     cleanupWakeWord,
     setLanguage,
+    latestEmotionRef, // 最新の感情を返却
   }
 }
