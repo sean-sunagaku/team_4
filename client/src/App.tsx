@@ -218,16 +218,7 @@ function App() {
           )}
 
           {screen === 'navigating' && (
-            <>
-              <MissionListPanel steps={missionSteps} onBackToHome={handleBackToHome} />
-              <div className="car-panel">
-                <img
-                  src="/prius-image.png"
-                  alt="Toyota Prius"
-                  className="car-image"
-                />
-              </div>
-            </>
+            <MissionListPanel steps={missionSteps} onBackToHome={handleBackToHome} />
           )}
         </div>
 
