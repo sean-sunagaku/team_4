@@ -81,6 +81,7 @@ export const useNavigation = () => {
   const clearRoute = useCallback(() => {
     setDirections(null)
     setRouteInfo(null)
+    setCurrentLocation(null)
   }, [])
 
   // APIレスポンスの location を使ってルートを計算（waypoints対応）

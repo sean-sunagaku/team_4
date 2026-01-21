@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import './MissionListPanel.css'
 
 export interface Mission {
@@ -13,9 +13,10 @@ interface MissionListPanelProps {
   steps: string[]
   missions?: Mission[]
   onBackToHome?: () => void
+  onAllMissionsComplete?: () => void
 }
 
-const MissionListPanel = ({ steps, missions: propMissions, onBackToHome }: MissionListPanelProps) => {
+const MissionListPanel = ({ steps, missions: propMissions, onBackToHome, onAllMissionsComplete }: MissionListPanelProps) => {
   // stepsからミッションを生成（後方互換性のため）
   const generatedMissions: Mission[] = steps.map((step, index) => ({
     id: `mission-${index}`,
@@ -42,6 +43,17 @@ const MissionListPanel = ({ steps, missions: propMissions, onBackToHome }: Missi
       setAnimatingId(null)
     }, 300)
   }
+
+  // 全ミッション完了時のコールバック
+  useEffect(() => {
+    if (missions.length > 0 && completedIds.size === missions.length) {
+      // 少し遅延させてアニメーション完了後に表示
+      const timer = setTimeout(() => {
+        onAllMissionsComplete?.()
+      }, 500)
+      return () => clearTimeout(timer)
+    }
+  }, [completedIds.size, missions.length, onAllMissionsComplete])
 
   // 現在進行中のミッション（最初の未完了ミッション）とUpNextを分離
   const incompleteMissions = missions.filter((m) => !completedIds.has(m.id) && !m.completed)

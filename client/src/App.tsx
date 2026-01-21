@@ -7,6 +7,7 @@ import MapPanel from './components/MapPanel'
 import LoadingScreen, { LoadingStep } from './components/LoadingScreen'
 import PracticeTypeSelector, { PracticeType } from './components/PracticeTypeSelector'
 import YouTubeVideoModal from './components/YouTubeVideoModal'
+import MissionCompleteModal from './components/MissionCompleteModal'
 import { useNavigation } from './hooks/useNavigation'
 import './App.css'
 
@@ -26,6 +27,7 @@ function App() {
     isOpen: false,
     data: null,
   })
+  const [showMissionCompleteModal, setShowMissionCompleteModal] = useState(false)
 
   const {
     currentLocation: geoLocation,
@@ -44,6 +46,20 @@ function App() {
   const handleCloseVideoModal = useCallback(() => {
     setVideoModal({ isOpen: false, data: null })
   }, [])
+
+  // 全ミッション完了時の処理
+  const handleAllMissionsComplete = useCallback(() => {
+    setShowMissionCompleteModal(true)
+  }, [])
+
+  // ミッション完了モーダルを閉じてホームに戻る
+  const handleCloseMissionCompleteModal = useCallback(() => {
+    setShowMissionCompleteModal(false)
+    setScreen('home')
+    setMissionSteps([])
+    setGoogleMapsNavUrl(null)
+    clearRoute()
+  }, [clearRoute])
 
   // モード選択時の処理
   const handleModeSelect = async (mode: string) => {
@@ -218,7 +234,11 @@ function App() {
           )}
 
           {screen === 'navigating' && (
-            <MissionListPanel steps={missionSteps} onBackToHome={handleBackToHome} />
+            <MissionListPanel
+              steps={missionSteps}
+              onBackToHome={handleBackToHome}
+              onAllMissionsComplete={handleAllMissionsComplete}
+            />
           )}
         </div>
 
@@ -251,6 +271,12 @@ function App() {
           isOpen={videoModal.isOpen}
           onClose={handleCloseVideoModal}
           data={videoModal.data}
+        />
+
+        {/* ミッション完了モーダル */}
+        <MissionCompleteModal
+          isOpen={showMissionCompleteModal}
+          onClose={handleCloseMissionCompleteModal}
         />
       </div>
     </LoadScript>

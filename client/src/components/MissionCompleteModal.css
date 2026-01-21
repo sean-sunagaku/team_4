@@ -1,0 +1,267 @@
+.mission-complete-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(200, 200, 200, 0.95);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.mission-complete-modal {
+  width: 90%;
+  max-width: 1000px;
+  background: white;
+  border-radius: 24px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+  animation: scaleIn 0.4s ease-out;
+  overflow: hidden;
+  position: relative;
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.mission-complete-content {
+  padding: 40px 120px 32px;
+  text-align: center;
+}
+
+.evaluation-container {
+  margin-bottom: 24px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 16px;
+  position: relative;
+}
+
+/* ヘッダータイトル */
+.result-title {
+  font-size: 1.75rem;
+  font-weight: 800;
+  color: #1a1a1a;
+  margin: 0 0 24px 0;
+}
+
+/* スコアセクション */
+.score-section {
+  margin-bottom: 16px;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 4px;
+}
+
+.score-number {
+  font-size: 5rem;
+  font-weight: 700;
+  color: #1a1a1a;
+  line-height: 1;
+}
+
+.score-unit {
+  font-size: 2rem;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+/* 星評価（5つ星） */
+.star-rating {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 32px;
+}
+
+.star-icon {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+}
+
+.star-icon.large {
+  width: 48px;
+  height: 48px;
+}
+
+/* 評価テーブル */
+.evaluation-table {
+  border: 1px solid #333;
+  border-radius: 4px;
+  overflow: hidden;
+  width: 1200px;
+}
+
+.evaluation-row {
+  display: grid;
+  grid-template-columns: 160px 120px 1fr;
+  border-bottom: 1px solid #333;
+  min-height: 80px;
+}
+
+.evaluation-row:last-child {
+  border-bottom: none;
+}
+
+.evaluation-title {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #1a1a1a;
+  border-right: 1px solid #333;
+  background: #fafafa;
+}
+
+.evaluation-stars {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  border-right: 1px solid #333;
+}
+
+.star-rating-small {
+  display: flex;
+  gap: 4px;
+}
+
+.evaluation-comment {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 16px 20px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #333;
+  text-align: left;
+  line-height: 1.5;
+}
+
+/* 車のキャラクター */
+.mission-complete-car {
+  width: 100px;
+  height: auto;
+  object-fit: contain;
+  flex-shrink: 0;
+  position: absolute;
+  left: calc(100% + 16px);
+  top: 150px;
+  transform: translateX(0);
+}
+
+/* 閉じるボタン */
+.close-result-button {
+  margin-top: 16px;
+  padding: 14px 48px;
+  background: #4A5AE8;
+  border: none;
+  border-radius: 12px;
+  font-size: 1rem;
+  font-weight: 600;
+  color: white;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.close-result-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(74, 90, 232, 0.4);
+}
+
+.close-result-button:active {
+  transform: translateY(0);
+}
+
+/* レスポンシブ対応 */
+@media (max-width: 768px) {
+  .mission-complete-modal {
+    width: calc(100% - 32px);
+    max-width: none;
+    margin: 16px;
+  }
+
+  .mission-complete-content {
+    padding: 24px 20px;
+  }
+
+  .result-title {
+    font-size: 1.25rem;
+  }
+
+  .score-number {
+    font-size: 3.5rem;
+  }
+
+  .score-unit {
+    font-size: 1.5rem;
+  }
+
+  .star-icon.large {
+    width: 36px;
+    height: 36px;
+  }
+
+  .evaluation-table {
+    margin-right: 0;
+  }
+
+  .evaluation-row {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto auto;
+  }
+
+  .evaluation-title {
+    border-right: none;
+    border-bottom: 1px solid #ddd;
+    padding: 12px;
+  }
+
+  .evaluation-stars {
+    border-right: none;
+    border-bottom: 1px solid #ddd;
+    padding: 12px;
+  }
+
+  .evaluation-container {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .evaluation-comment {
+    padding: 12px;
+    text-align: center;
+  }
+
+  .mission-complete-car {
+    width: 80px;
+    margin: 16px auto 0;
+    margin-top: 16px;
+  }
+}

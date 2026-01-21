@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react'
 import { DirectionsRenderer, GoogleMap, Marker } from '@react-google-maps/api'
 import { LatLng } from '../hooks/useNavigation'
 
@@ -29,10 +30,20 @@ type MapPanelProps = {
 }
 
 const MapPanel = ({ currentLocation, directions }: MapPanelProps) => {
+  const [mapKey, setMapKey] = useState(0)
+
+  // directionsがnullになったときだけkeyを更新してマップを再レンダリング
+  useEffect(() => {
+    if (directions === null) {
+      setMapKey((prev) => prev + 1)
+    }
+  }, [directions])
+
   return (
     <div className="center-panel" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <div style={{ flex: 1, minHeight: 0 }}>
         <GoogleMap
+          key={mapKey}
           mapContainerStyle={mapContainerStyle}
           center={currentLocation || defaultCenter}
           zoom={currentLocation ? 16 : 12}
@@ -48,7 +59,9 @@ const MapPanel = ({ currentLocation, directions }: MapPanelProps) => {
               }}
             />
           )}
-          {directions && <DirectionsRenderer directions={directions} />}
+          {directions && (
+            <DirectionsRenderer directions={directions} />
+          )}
         </GoogleMap>
       </div>
     </div>
