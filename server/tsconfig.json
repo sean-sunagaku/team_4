@@ -20,6 +20,6 @@
     "allowJs": true,
     "types": ["bun", "node"]
   },
-  "include": ["src/**/*", "*.ts"],
+  "include": ["src/**/*", "scripts/**/*", "*.ts"],
   "exclude": ["node_modules", "dist"]
 }
