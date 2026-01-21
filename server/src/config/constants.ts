@@ -85,6 +85,17 @@ export const VIDEO_TRIGGERS: VideoTrigger[] = [
     title: "ヤリスの給油方法",
     description: "トヨタ ヤリスの給油方法を動画で確認できます。",
   },
+  {
+    id: "prius_engine_start",
+    patterns: [
+      /プリウス.*(エンジン|始動|スタート)/i,
+      /prius.*(engine|start)/i,
+      /(エンジン|始動|スタート).*プリウス/i,
+    ],
+    videoUrl: "https://youtu.be/q0cIILRwJO8?si=6MVSRxuWIZm3jX5f",
+    title: "プリウスのエンジン始動方法",
+    description: "トヨタ プリウスのエンジン始動方法を動画で確認できます。",
+  },
   // 将来: 他の動画トリガーを追加可能
 ];
 
