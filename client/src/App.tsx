@@ -1,11 +1,12 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { LoadScript } from '@react-google-maps/api'
-import AIChatButton from './components/aiChat/AIChatButton'
+import AIChatButton, { VideoModalData } from './components/aiChat/AIChatButton'
 import MainPanel from './components/MainPanel'
 import MissionListPanel from './components/MissionListPanel'
 import MapPanel from './components/MapPanel'
 import LoadingScreen, { LoadingStep } from './components/LoadingScreen'
 import PracticeTypeSelector, { PracticeType } from './components/PracticeTypeSelector'
+import YouTubeVideoModal from './components/YouTubeVideoModal'
 import { useNavigation } from './hooks/useNavigation'
 import './App.css'
 
@@ -21,6 +22,10 @@ function App() {
   const [missionSteps, setMissionSteps] = useState<string[]>([])
   const [, setGoogleMapsNavUrl] = useState<string | null>(null)
   const [currentLocation, setCurrentLocation] = useState<string>('')
+  const [videoModal, setVideoModal] = useState<{ isOpen: boolean; data: VideoModalData | null }>({
+    isOpen: false,
+    data: null,
+  })
 
   const {
     currentLocation: geoLocation,
@@ -28,6 +33,17 @@ function App() {
     calculateRouteFromLocations,
     clearRoute,
   } = useNavigation()
+
+  // ビデオモーダル表示ハンドラー
+  const handleShowVideoModal = useCallback((data: VideoModalData) => {
+    console.log('Opening video modal:', data)
+    setVideoModal({ isOpen: true, data })
+  }, [])
+
+  // ビデオモーダルを閉じる
+  const handleCloseVideoModal = useCallback(() => {
+    setVideoModal({ isOpen: false, data: null })
+  }, [])
 
   // モード選択時の処理
   const handleModeSelect = async (mode: string) => {
@@ -221,7 +237,7 @@ function App() {
         </div>
 
         {/* AIチャットボタン */}
-        <AIChatButton alwaysListen={true} />
+        <AIChatButton alwaysListen={true} onShowModal={handleShowVideoModal} />
 
         {/* ローディング画面 */}
         {loadingStep && (
@@ -238,6 +254,13 @@ function App() {
             onClose={() => setShowPracticeSelector(false)}
           />
         )}
+
+        {/* YouTubeビデオモーダル */}
+        <YouTubeVideoModal
+          isOpen={videoModal.isOpen}
+          onClose={handleCloseVideoModal}
+          data={videoModal.data}
+        />
       </div>
     </LoadScript>
   )

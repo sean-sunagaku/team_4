@@ -11,6 +11,7 @@ export const chatApi = {
       onChunk?: (chunk: string) => void;
       onAudio?: (url: string, index?: number) => void;
       onTtsText?: (text: string, index?: number, language?: string, pitch?: number, rate?: number) => void; // Browser TTS with language and emotion
+      onShowModal?: (modalData: { modalType: string; videoId?: string; videoUrl?: string; title?: string; description?: string }) => void;
       onDone?: (content: string) => void;
       onError?: (error: string) => void;
     },
@@ -65,6 +66,11 @@ export const chatApi = {
               case "tts_text":
                 // Browser TTS: text to be spoken by the browser with language and emotion
                 callbacks.onTtsText?.(data.text, data.index, data.language, data.pitch, data.rate);
+                break;
+              case "show_modal":
+                // Video or other modal trigger
+                console.log('SSE received show_modal event:', data);
+                callbacks.onShowModal?.(data);
                 break;
               case "done":
                 callbacks.onDone?.(data.content);

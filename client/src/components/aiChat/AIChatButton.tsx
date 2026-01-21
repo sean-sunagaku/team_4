@@ -18,14 +18,23 @@ const playWakeSound = () => playNotificationSound('wake')
 // 録音終了時の通知音
 const playEndSound = () => playNotificationSound('end')
 
+export interface VideoModalData {
+  modalType: string
+  videoId?: string
+  videoUrl?: string
+  title?: string
+  description?: string
+}
+
 interface AIChatButtonProps {
   autoStart?: boolean
   placement?: 'floating' | 'inline'
   alwaysListen?: boolean // 常時待機モード
+  onShowModal?: (data: VideoModalData) => void // ビデオモーダル表示コールバック
 }
 
 // 画面状態と音声フロー（待機→録音→送信→再生→復帰）を束ねるコントローラ
-const AIChatButton = ({ autoStart = false, placement = 'floating', alwaysListen = false }: AIChatButtonProps) => {
+const AIChatButton = ({ autoStart = false, placement = 'floating', alwaysListen = false, onShowModal }: AIChatButtonProps) => {
   const [voiceState, setVoiceState] = useState<VoiceState>('idle')
   const [selectedLanguage, setSelectedLanguage] = useState<SupportedLanguage>('ja')
   const selectedLanguageRef = useRef<SupportedLanguage>('ja')
@@ -111,6 +120,11 @@ const AIChatButton = ({ autoStart = false, placement = 'floating', alwaysListen 
             const lang = language || selectedLanguageRef.current
             console.log(`Browser TTS[${index}] (${lang}, pitch: ${pitch}, rate: ${rate}):`, text.slice(0, 30))
             queueBrowserTts(text, index ?? 0, lang, pitch, rate)
+          },
+          // ビデオモーダル表示
+          onShowModal: (data) => {
+            console.log('Show modal:', data)
+            onShowModal?.(data)
           },
           onDone: (content) => {
             console.log('Done:', content)

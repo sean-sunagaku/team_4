@@ -17,7 +17,7 @@ import {
   TTS_MODE,
   USE_LOCAL_TTS,
 } from "../config/app.config.js";
-import { TEXT_PATTERNS, TIMING_CONSTANTS, WAKE_WORD_PATTERNS } from "../config/constants.js";
+import { TEXT_PATTERNS, TIMING_CONSTANTS, WAKE_WORD_PATTERNS, detectVideoTrigger } from "../config/constants.js";
 import { detectLanguage } from "../services/language-detection-service.js";
 import { getEmotionPrompt, getEmotionTTSConfig, determineEmotion } from "../services/emotion-prompt-service.js";
 import type { Location, TTSMode } from "../types/common.types.js";
@@ -157,6 +157,22 @@ voiceRoutes.post("/chat", async (c) => {
         }),
       });
 
+      // Check for video trigger (e.g., "ヤリスの給油方法を教えて")
+      const videoTrigger = detectVideoTrigger(userText);
+      if (videoTrigger) {
+        console.log(`Video trigger detected: ${videoTrigger.id} for "${userText}"`);
+        await stream.writeSSE({
+          data: JSON.stringify({
+            type: "show_modal",
+            modalType: "video",
+            videoId: videoTrigger.id,
+            videoUrl: videoTrigger.videoUrl,
+            title: videoTrigger.title,
+            description: videoTrigger.description,
+          }),
+        });
+      }
+
       // Get or create conversation
       let convId = conversationId;
       if (!convId) {
@@ -222,6 +238,7 @@ voiceRoutes.post("/chat", async (c) => {
       const ttsQueue: { sentence: string; index: number }[] = [];
       let isProcessingTTS = false;
       let firstSentenceSent = false;
+      let firstSentenceComplete = false;
       let ttsCompleteResolve!: () => void;
       const ttsCompletePromise = new Promise<void>((resolve) => {
         ttsCompleteResolve = resolve;
@@ -287,7 +304,7 @@ voiceRoutes.post("/chat", async (c) => {
 
         isProcessingTTS = false;
 
-        if (llmComplete && ttsQueue.length === 0) {
+        if (llmComplete && ttsQueue.length === 0 && firstSentenceComplete) {
           ttsCompleteResolve();
         }
       };
@@ -314,6 +331,11 @@ voiceRoutes.post("/chat", async (c) => {
                   firstSentenceSent = true;
                   console.log("First sentence detected - sending to TTS immediately");
                   sendToTTS(sentence, currentIndex).then(() => {
+                    firstSentenceComplete = true;
+                    // Check if all TTS is done
+                    if (llmComplete && ttsQueue.length === 0 && !isProcessingTTS) {
+                      ttsCompleteResolve();
+                    }
                     processTTSQueue();
                   });
                 } else {
@@ -331,6 +353,7 @@ voiceRoutes.post("/chat", async (c) => {
         if (!firstSentenceSent) {
           firstSentenceSent = true;
           await sendToTTS(sentenceBuffer, currentIndex);
+          firstSentenceComplete = true;
         } else {
           ttsQueue.push({ sentence: sentenceBuffer, index: currentIndex });
           processTTSQueue();
@@ -339,7 +362,8 @@ voiceRoutes.post("/chat", async (c) => {
 
       llmComplete = true;
 
-      if (!firstSentenceSent || (ttsQueue.length === 0 && !isProcessingTTS)) {
+      // Check if all TTS is done (no first sentence, or first sentence done and queue empty)
+      if (!firstSentenceSent || (firstSentenceComplete && ttsQueue.length === 0 && !isProcessingTTS)) {
         ttsCompleteResolve();
       }
 
