@@ -1,0 +1,15 @@
+<svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- 開いた本 -->
+  <path d="M8 12c8-2 16-2 24 2v40c-8-4-16-4-24-2V12z" stroke="#333" stroke-width="3.5" fill="none" stroke-linejoin="round"/>
+  <path d="M56 12c-8-2-16-2-24 2v40c8-4 16-4 24-2V12z" stroke="#333" stroke-width="3.5" fill="none" stroke-linejoin="round"/>
+  <!-- 背表紙 -->
+  <path d="M32 14v40" stroke="#333" stroke-width="3"/>
+  <!-- 左ページの線 -->
+  <path d="M14 20h12" stroke="#333" stroke-width="3" stroke-linecap="round"/>
+  <path d="M14 28h12" stroke="#333" stroke-width="3" stroke-linecap="round"/>
+  <path d="M14 36h12" stroke="#333" stroke-width="3" stroke-linecap="round"/>
+  <!-- 右ページの線 -->
+  <path d="M38 20h12" stroke="#333" stroke-width="3" stroke-linecap="round"/>
+  <path d="M38 28h12" stroke="#333" stroke-width="3" stroke-linecap="round"/>
+  <path d="M38 36h12" stroke="#333" stroke-width="3" stroke-linecap="round"/>
+</svg>
