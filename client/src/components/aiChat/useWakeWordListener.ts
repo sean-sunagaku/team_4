@@ -35,6 +35,11 @@ export const useWakeWordListener = ({
   // クロージャ問題を回避するためのref
   const setSelectedLanguageRef = useRef(setSelectedLanguage)
   setSelectedLanguageRef.current = setSelectedLanguage
+  // 最新の感情を保存（ASRから検出された感情）
+  const latestEmotionRef = useRef<string | null>(null)
+  // ウェイクワード後の転写を蓄積（ASRスキップ用）
+  const accumulatedTranscriptRef = useRef<string>('')
+  const isAccumulatingRef = useRef(false) // ウェイクワード検出後に転写蓄積を開始
 
   // 手動で待受けを止める（録音切替やタップ時）
   // 待受け中の WS/Worklet を停止する
@@ -53,7 +58,21 @@ export const useWakeWordListener = ({
       wsRef.current = null
     }
     isUsingWebSocketRef.current = false
+    // 蓄積状態をリセット
+    isAccumulatingRef.current = false
   }, [])
+
+  // 蓄積されたトランスクリプトを取得してリセット
+  // 録音完了時に呼び出してASRスキップ用のテキストを取得
+  const getAndResetAccumulatedTranscript = useCallback(() => {
+    const transcript = accumulatedTranscriptRef.current
+    accumulatedTranscriptRef.current = ''
+    isAccumulatingRef.current = false
+    // WebSocket ASRも停止
+    stopListening()
+    console.log(`⚡ Retrieved accumulated transcript: "${transcript.slice(0, 50)}..."`)
+    return transcript
+  }, [stopListening])
 
   // WebSocket/Worklet の後片付け
   // コンポーネント終了時に WS/Worklet を確実に閉じる
@@ -141,19 +160,34 @@ export const useWakeWordListener = ({
             }))
           } else if (data.type === 'transcript') {
             const lang = data.language || selectedLanguageRef.current
+            const emotion = data.emotion || null
             console.log(
-              `ASR transcript: "${data.text}" (final: ${data.isFinal}, wake: ${data.wakeWordDetected}, lang: ${lang})`
+              `ASR transcript: "${data.text}" (final: ${data.isFinal}, wake: ${data.wakeWordDetected}, lang: ${lang}, emotion: ${emotion}, accumulating: ${isAccumulatingRef.current})`
             )
+
+            // 最新の感情を保存（中間結果でも更新）
+            if (emotion) {
+              latestEmotionRef.current = emotion
+            }
+
+            // ウェイクワード検出後は転写を蓄積
+            if (isAccumulatingRef.current && data.text) {
+              // 最新の転写で上書き（増分方式のASRなので常に最新の全文が来る）
+              accumulatedTranscriptRef.current = data.text
+              console.log(`⚡ Accumulated transcript: "${data.text.slice(0, 30)}..."`)
+            }
 
             if (data.wakeWordDetected) {
               console.log('ウェイクワード検出！録音モードに切り替え...')
               playWakeSound()
 
-              if (audioWorkletRef.current) {
-                audioWorkletRef.current.disconnect()
-                audioWorkletRef.current = null
-              }
-              ws.send(JSON.stringify({ type: 'finish' }))
+              // ⚡ ASRスキップ最適化: WebSocket ASRを継続して転写を蓄積
+              // MediaRecorderと並行してASRを続け、録音完了時に転写を使用
+              isAccumulatingRef.current = true
+              accumulatedTranscriptRef.current = '' // リセット
+
+              // 注意: WebSocket接続とオーディオストリーミングは維持
+              // ws.send(JSON.stringify({ type: 'finish' })) // ← 削除: 接続を維持
 
               startRecordingWithStream(streamRef.current!)
             }
@@ -226,5 +260,7 @@ export const useWakeWordListener = ({
     stopListening,
     cleanupWakeWord,
     setLanguage,
+    latestEmotionRef,
+    getAndResetAccumulatedTranscript,
   }
 }

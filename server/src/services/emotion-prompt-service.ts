@@ -1,0 +1,170 @@
+/**
+ * Emotion Prompt Service
+ * Qwen3 ASR Flashから取得した感情情報をLLMプロンプトに注入するためのサービス
+ *
+ * 対応感情: neutral, happy, sad, angry, fear, disgust, surprise
+ */
+
+export type EmotionType = 'neutral' | 'happy' | 'sad' | 'angry' | 'fear' | 'disgust' | 'surprise';
+
+/**
+ * 感情タイプに応じたプロンプト指示
+ * LLMがユーザーの感情に適切に対応できるようにする
+ */
+const EMOTION_PROMPTS: Record<EmotionType, string> = {
+  neutral: '',
+  happy: '\n【感情: 嬉しそう】明るく返答。',
+  sad: '\n【感情: 悲しそう】優しく共感。',
+  angry: '\n【感情: イライラ】冷静に要点のみ。',
+  fear: '\n【感情: 不安】安心させる。',
+  disgust: '\n【感情: 不快】理解を示す。',
+  surprise: '\n【感情: 驚き】簡潔に説明。',
+};
+
+/**
+ * 感情に応じたプロンプト指示を取得
+ * @param emotion - ASRから取得した感情タイプ
+ * @returns プロンプトに追加する感情コンテキスト（neutralの場合は空文字）
+ */
+export function getEmotionPrompt(emotion: string | null | undefined): string {
+  if (!emotion) return '';
+  return EMOTION_PROMPTS[emotion as EmotionType] || '';
+}
+
+/**
+ * 感情が有効な値かどうかを確認（内部使用）
+ */
+function isValidEmotion(emotion: string | null | undefined): emotion is EmotionType {
+  if (!emotion) return false;
+  return ['neutral', 'happy', 'sad', 'angry', 'fear', 'disgust', 'surprise'].includes(emotion);
+}
+
+/**
+ * テキストから感情を推測（内部使用）
+ * ASRが感情を返さない場合やneutralの場合のフォールバック
+ */
+function detectEmotionFromText(text: string): EmotionType {
+  const lowerText = text.toLowerCase();
+
+  // Happy: 感謝、喜び、ポジティブな表現
+  const happyPatterns = [
+    'ありがとう', 'ありがとうございます', 'サンキュー', 'thank',
+    '嬉しい', 'うれしい', '楽しい', 'たのしい', '幸せ', 'しあわせ',
+    '最高', 'さいこう', 'すごい', 'すばらしい', '素晴らしい',
+    'やった', 'できた', '成功', 'うまくいった',
+    '助かる', 'たすかる', '感謝', 'おかげ',
+    '大好き', 'だいすき', '好き', 'すき',
+    'わーい', 'やったー', 'いぇい', 'よっしゃ',
+    '！', '!',  // 感嘆符が多いと感情的
+  ];
+
+  // Sad: 悲しみ、落ち込み
+  const sadPatterns = [
+    '悲しい', 'かなしい', '寂しい', 'さみしい', 'つらい', '辛い',
+    '疲れた', 'つかれた', 'しんどい', 'だるい',
+    '落ち込', 'がっかり', '残念', 'ざんねん',
+    '泣き', 'なき', '涙', 'なみだ',
+    '失敗', 'しっぱい', 'できなかった', 'だめ', 'ダメ',
+    'ごめん', 'すみません', '申し訳',
+  ];
+
+  // Angry: 怒り、イライラ
+  const angryPatterns = [
+    '怒', 'おこ', 'むかつく', 'イライラ', 'いらいら',
+    'ふざけ', 'なんで', 'なぜ', 'どうして',
+    '最悪', 'さいあく', 'ひどい', 'ひどすぎ',
+    'うざい', 'うるさい', 'やめて', 'やめろ',
+    'ばか', 'バカ', 'アホ', 'あほ',
+  ];
+
+  // Fear: 不安、恐れ
+  const fearPatterns = [
+    '怖い', 'こわい', '恐', '不安', 'ふあん',
+    '心配', 'しんぱい', '大丈夫', 'だいじょうぶ',
+    'やばい', 'ヤバい', 'まずい',
+    '緊張', 'きんちょう', 'どきどき', 'ドキドキ',
+  ];
+
+  // Surprise: 驚き
+  const surprisePatterns = [
+    '驚', 'おどろ', 'びっくり', 'ビックリ',
+    'えっ', 'え？', 'えー', 'まじ', 'マジ', 'ほんと', '本当',
+    'すごっ', 'やばっ', 'うそ', 'ウソ', '嘘',
+    '信じられない', 'しんじられない',
+  ];
+
+  // パターンマッチングでスコアを計算
+  const countMatches = (patterns: string[]): number => {
+    return patterns.filter(p => lowerText.includes(p.toLowerCase())).length;
+  };
+
+  const scores = {
+    happy: countMatches(happyPatterns),
+    sad: countMatches(sadPatterns),
+    angry: countMatches(angryPatterns),
+    fear: countMatches(fearPatterns),
+    surprise: countMatches(surprisePatterns),
+  };
+
+  // 最もスコアが高い感情を返す（スコアが0ならneutral）
+  const maxScore = Math.max(...Object.values(scores));
+  if (maxScore === 0) return 'neutral';
+
+  const emotions = Object.entries(scores) as [EmotionType, number][];
+  const [detectedEmotion] = emotions.reduce((max, current) =>
+    current[1] > max[1] ? current : max
+  );
+
+  return detectedEmotion;
+}
+
+/**
+ * ASR感情とテキスト分析を組み合わせて最終的な感情を決定
+ * @param asrEmotion - ASRから取得した感情（nullの場合あり）
+ * @param text - ユーザーの発言テキスト
+ * @returns 最終的な感情タイプ
+ */
+export function determineEmotion(asrEmotion: string | null | undefined, text: string): EmotionType {
+  // ASRがneutral以外の感情を返した場合はそれを使用
+  if (asrEmotion && asrEmotion !== 'neutral' && isValidEmotion(asrEmotion)) {
+    return asrEmotion;
+  }
+
+  // ASRがneutralまたは未検出の場合、テキストから感情を推測
+  const textEmotion = detectEmotionFromText(text);
+  if (textEmotion !== 'neutral') {
+    console.log(`Text-based emotion detected: ${textEmotion} (ASR was: ${asrEmotion || 'none'})`);
+    return textEmotion;
+  }
+
+  return 'neutral';
+}
+
+/**
+ * TTS用の感情設定
+ * Browser TTS: pitch（0.5-2.0）とrate（0.5-2.0）を調整
+ */
+export interface EmotionTTSConfig {
+  pitch: number;      // Browser TTS: 声の高さ (1.0 = 標準)
+  rate: number;       // Browser TTS: 話速 (1.0 = 標準)
+}
+
+const EMOTION_TTS_CONFIG: Record<EmotionType, EmotionTTSConfig> = {
+  neutral: { pitch: 1.0, rate: 1.0 },
+  happy: { pitch: 1.15, rate: 1.1 },     // 少し高め、少し速め
+  sad: { pitch: 0.9, rate: 0.85 },       // 少し低め、ゆっくり
+  angry: { pitch: 1.0, rate: 1.05 },     // 通常、やや速め
+  fear: { pitch: 1.1, rate: 0.9 },       // やや高め、やや遅め
+  disgust: { pitch: 0.95, rate: 0.95 },  // やや低め、やや遅め
+  surprise: { pitch: 1.2, rate: 1.15 },  // 高め、速め
+};
+
+/**
+ * 感情に応じたTTS設定を取得
+ * @param emotion - 感情タイプ
+ * @returns TTS設定（pitch, rate）
+ */
+export function getEmotionTTSConfig(emotion: string | null | undefined): EmotionTTSConfig {
+  if (!emotion) return EMOTION_TTS_CONFIG.neutral;
+  return EMOTION_TTS_CONFIG[emotion as EmotionType] || EMOTION_TTS_CONFIG.neutral;
+}

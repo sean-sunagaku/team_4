@@ -1,0 +1,66 @@
+/* YouTubeVideoModal - NavigationStartModalのデザインを踏襲 */
+
+.youtube-video-modal {
+  width: 90%;
+  max-width: 640px;
+  background: rgba(33, 52, 70, 0.95);
+  backdrop-filter: blur(10px);
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  animation: slideIn 0.3s ease-out;
+  overflow: hidden;
+}
+
+.youtube-modal-body {
+  padding: 20px 24px 24px;
+}
+
+.youtube-modal-description {
+  font-size: 0.95rem;
+  color: rgba(255, 255, 255, 0.85);
+  margin: 0 0 16px 0;
+  line-height: 1.5;
+}
+
+.youtube-video-container {
+  position: relative;
+  width: 100%;
+  padding-bottom: 56.25%; /* 16:9 aspect ratio */
+  background: #000;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.youtube-video-container iframe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+.youtube-error {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 0.9rem;
+}
+
+@media (max-width: 768px) {
+  .youtube-video-modal {
+    width: calc(100% - 32px);
+    margin: 16px;
+    max-width: none;
+  }
+
+  .youtube-modal-body {
+    padding: 16px 20px 20px;
+  }
+
+  .youtube-modal-description {
+    font-size: 0.9rem;
+  }
+}

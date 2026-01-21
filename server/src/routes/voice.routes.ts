@@ -17,8 +17,9 @@ import {
   TTS_MODE,
   USE_LOCAL_TTS,
 } from "../config/app.config.js";
-import { TEXT_PATTERNS, TIMING_CONSTANTS, WAKE_WORD_PATTERNS } from "../config/constants.js";
+import { TEXT_PATTERNS, TIMING_CONSTANTS, WAKE_WORD_PATTERNS, detectVideoTrigger } from "../config/constants.js";
 import { detectLanguage } from "../services/language-detection-service.js";
+import { getEmotionPrompt, getEmotionTTSConfig, determineEmotion } from "../services/emotion-prompt-service.js";
 import type { Location, TTSMode } from "../types/common.types.js";
 
 const voiceRoutes = new Hono();
@@ -58,12 +59,14 @@ function getTextOnly(text: string): string {
 
 // Voice chat endpoint - receives audio, returns text + audio response
 voiceRoutes.post("/chat", async (c) => {
-  let audioData: string;
+  let audioData: string | undefined;
   let audioFormat: string;
   let conversationId: string | undefined;
   let ttsMode: TTSMode;
   let location: Location | undefined;
   let requestLanguage: string | undefined;
+  let userEmotion: string | undefined;
+  let preTranscript: string | undefined;
 
   try {
     const body = await c.req.json();
@@ -73,50 +76,102 @@ voiceRoutes.post("/chat", async (c) => {
     ttsMode = body.ttsMode || TTS_MODE;
     location = body.location;
     requestLanguage = body.language;
+    userEmotion = body.emotion;
+    preTranscript = body.transcript;
   } catch {
     return c.json({ error: "Invalid request body" }, 400);
   }
 
-  if (!audioData) {
-    return c.json({ error: "Audio data is required" }, 400);
+  if (!audioData && !preTranscript) {
+    return c.json({ error: "Audio data or transcript is required" }, 400);
   }
 
   const useBrowserTts = ttsMode === "browser";
 
   return streamSSE(c, async (stream) => {
     try {
-      // Step 1: ASR - Convert audio to text
-      console.log("Starting ASR transcription...");
-      const asrResult = await qwenASRService.transcribeAudio(
-        audioData,
-        audioFormat
-      );
+      // ===== Performance Timing =====
+      const timings = {
+        start: Date.now(),
+        asrEnd: 0,
+        ragEnd: 0,
+        llmFirstChunk: 0,
+        ttsFirstComplete: 0,
+      };
 
-      if (!asrResult.success || !asrResult.text) {
+      // Step 1: ASR - Convert audio to text (skip if preTranscript provided)
+      let userText: string;
+
+      if (preTranscript && preTranscript.trim().length > 0) {
+        // ASR SKIP: Use pre-transcript from WebSocket ASR
+        console.log(`⏱️ [PERF] ASR SKIPPED! Using pre-transcript from WebSocket ASR`);
+        userText = preTranscript;
+        timings.asrEnd = Date.now();
+        console.log(`⏱️ [PERF] ASR skip saved ~1800ms (total: ${timings.asrEnd - timings.start}ms)`);
+      } else if (audioData) {
+        console.log("⏱️ [PERF] Starting ASR transcription...");
+        const asrResult = await qwenASRService.transcribeAudio(
+          audioData,
+          audioFormat
+        );
+        timings.asrEnd = Date.now();
+        console.log(`⏱️ [PERF] ASR completed in ${timings.asrEnd - timings.start}ms`);
+
+        if (!asrResult.success || !asrResult.text) {
+          await stream.writeSSE({
+            data: JSON.stringify({
+              type: "error",
+              message: asrResult.error || "Failed to transcribe audio",
+            }),
+          });
+          return;
+        }
+        userText = asrResult.text;
+        console.log("ASR transcription completed:", userText);
+      } else {
         await stream.writeSSE({
           data: JSON.stringify({
             type: "error",
-            message: asrResult.error || "Failed to transcribe audio",
+            message: "No audio data or transcript provided",
           }),
         });
         return;
       }
-
-      const userText = asrResult.text;
-      console.log("ASR transcription completed:", userText);
 
       const detectedLang = detectLanguage(userText);
       console.log(
         `Detected language: ${detectedLang} (hint: ${requestLanguage || "none"}, text: "${userText.slice(0, 20)}")`
       );
 
+      // Detect emotion: combine ASR emotion with text analysis
+      const detectedEmotion = determineEmotion(userEmotion, userText);
+      const emotionTTSConfig = getEmotionTTSConfig(detectedEmotion);
+      console.log(`Final emotion: ${detectedEmotion} (client ASR: ${userEmotion || 'none'})`);
+
       await stream.writeSSE({
         data: JSON.stringify({
           type: "transcription",
           text: userText,
           language: detectedLang,
+          emotion: detectedEmotion,
         }),
       });
+
+      // Check for video trigger (e.g., "ヤリスの給油方法を教えて")
+      const videoTrigger = detectVideoTrigger(userText);
+      if (videoTrigger) {
+        console.log(`Video trigger detected: ${videoTrigger.id} for "${userText}"`);
+        await stream.writeSSE({
+          data: JSON.stringify({
+            type: "show_modal",
+            modalType: "video",
+            videoId: videoTrigger.id,
+            videoUrl: videoTrigger.videoUrl,
+            title: videoTrigger.title,
+            description: videoTrigger.description,
+          }),
+        });
+      }
 
       // Get or create conversation
       let convId = conversationId;
@@ -134,8 +189,21 @@ voiceRoutes.post("/chat", async (c) => {
         console.error("Failed to save user message:", err);
       });
 
-      // Step 2: Build context
+      // Step 2: Build context with RAG skip optimization
       const effectiveLocation = getLocation(location);
+
+      // Low latency optimization: skip RAG search for short emotional messages
+      const isSimpleMessage = userText.length < 30 &&
+        !userText.includes('？') &&
+        !userText.includes('?') &&
+        !userText.match(/どう|なに|いつ|どこ|なぜ|教えて|方法|やり方|仕方/);
+
+      if (isSimpleMessage) {
+        console.log(`⏱️ [PERF] RAG will be skipped (simple message: "${userText.slice(0, 20)}...")`);
+      }
+
+      console.log("⏱️ [PERF] Starting context building...");
+      const contextStartTime = Date.now();
       const [existingMessages, contextResult] = await Promise.all([
         chatService.getMessages(convId),
         buildContext({
@@ -143,11 +211,20 @@ voiceRoutes.post("/chat", async (c) => {
           location: effectiveLocation,
           language: detectedLang,
           skipWebSearch: true,
+          skipRAGSearch: isSimpleMessage,
         }),
       ]);
+      timings.ragEnd = Date.now();
+      console.log(`⏱️ [PERF] Context building completed in ${timings.ragEnd - contextStartTime}ms`);
+
+      // Add emotion context to system prompt
+      const emotionPrompt = getEmotionPrompt(detectedEmotion);
+      const systemPromptWithEmotion = emotionPrompt
+        ? `${contextResult.systemPrompt}\n\n${emotionPrompt}`
+        : contextResult.systemPrompt;
 
       const aiMessages = [
-        { role: "system" as const, content: contextResult.systemPrompt },
+        { role: "system" as const, content: systemPromptWithEmotion },
         ...chatService.formatMessagesForAI(existingMessages),
         { role: "user" as const, content: userText },
       ];
@@ -161,6 +238,7 @@ voiceRoutes.post("/chat", async (c) => {
       const ttsQueue: { sentence: string; index: number }[] = [];
       let isProcessingTTS = false;
       let firstSentenceSent = false;
+      let firstSentenceComplete = false;
       let ttsCompleteResolve!: () => void;
       const ttsCompletePromise = new Promise<void>((resolve) => {
         ttsCompleteResolve = resolve;
@@ -182,9 +260,12 @@ voiceRoutes.post("/chat", async (c) => {
               text: textOnly,
               index: index,
               language: detectedLang,
+              emotion: detectedEmotion,
+              pitch: emotionTTSConfig.pitch,
+              rate: emotionTTSConfig.rate,
             }),
           });
-          console.log(`TTS[${index}] sent to browser (lang: ${detectedLang})`);
+          console.log(`TTS[${index}] sent to browser (lang: ${detectedLang}, emotion: ${detectedEmotion})`);
           return;
         }
 
@@ -223,7 +304,7 @@ voiceRoutes.post("/chat", async (c) => {
 
         isProcessingTTS = false;
 
-        if (llmComplete && ttsQueue.length === 0) {
+        if (llmComplete && ttsQueue.length === 0 && firstSentenceComplete) {
           ttsCompleteResolve();
         }
       };
@@ -250,6 +331,11 @@ voiceRoutes.post("/chat", async (c) => {
                   firstSentenceSent = true;
                   console.log("First sentence detected - sending to TTS immediately");
                   sendToTTS(sentence, currentIndex).then(() => {
+                    firstSentenceComplete = true;
+                    // Check if all TTS is done
+                    if (llmComplete && ttsQueue.length === 0 && !isProcessingTTS) {
+                      ttsCompleteResolve();
+                    }
                     processTTSQueue();
                   });
                 } else {
@@ -267,6 +353,7 @@ voiceRoutes.post("/chat", async (c) => {
         if (!firstSentenceSent) {
           firstSentenceSent = true;
           await sendToTTS(sentenceBuffer, currentIndex);
+          firstSentenceComplete = true;
         } else {
           ttsQueue.push({ sentence: sentenceBuffer, index: currentIndex });
           processTTSQueue();
@@ -275,7 +362,8 @@ voiceRoutes.post("/chat", async (c) => {
 
       llmComplete = true;
 
-      if (!firstSentenceSent || (ttsQueue.length === 0 && !isProcessingTTS)) {
+      // Check if all TTS is done (no first sentence, or first sentence done and queue empty)
+      if (!firstSentenceSent || (firstSentenceComplete && ttsQueue.length === 0 && !isProcessingTTS)) {
         ttsCompleteResolve();
       }
 

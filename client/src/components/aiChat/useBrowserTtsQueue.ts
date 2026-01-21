@@ -15,12 +15,21 @@ const getTtsLangCode = (lang?: string): string => {
   return langMap[lang || 'ja'] || 'ja-JP'
 }
 
+// Browser TTSキューアイテムの型（感情によるpitch/rate調整対応）
+interface BrowserTtsQueueItem {
+  text: string
+  index: number
+  language?: string
+  pitch?: number  // 声の高さ（0.5-2.0、デフォルト1.0）
+  rate?: number   // 話速（0.5-2.0、デフォルト1.0）
+}
+
 // Web Speech API（ブラウザTTS）を順序通りに再生するためのキュー管理フック
 export const useBrowserTtsQueue = (
   setVoiceState: Dispatch<SetStateAction<VoiceState>>,
   returnToIdleOrListeningRef: MutableRefObject<() => void>
 ) => {
-  const browserTtsQueueRef = useRef<{ text: string; index: number; language?: string }[]>([])
+  const browserTtsQueueRef = useRef<BrowserTtsQueueItem[]>([])
   const isBrowserSpeakingRef = useRef(false)
   const nextBrowserTtsIndexRef = useRef(0)
 
@@ -44,8 +53,9 @@ export const useBrowserTtsQueue = (
       const utterance = new SpeechSynthesisUtterance(nextItem.text)
       const ttsLang = getTtsLangCode(nextItem.language)
       utterance.lang = ttsLang
-      utterance.rate = 1.0
-      utterance.pitch = 1.0
+      // 感情に応じたpitch/rateを適用（未指定時はデフォルト1.0）
+      utterance.rate = nextItem.rate ?? 1.0
+      utterance.pitch = nextItem.pitch ?? 1.0
 
       // 言語に合った音声を選択
       const voices = window.speechSynthesis.getVoices()
@@ -68,14 +78,14 @@ export const useBrowserTtsQueue = (
       utterance.onerror = handleFinish
 
       window.speechSynthesis.speak(utterance)
-      console.log(`Browser TTS[${nextItem.index}] (${ttsLang}): "${nextItem.text.slice(0, 30)}..."`)
+      console.log(`Browser TTS[${nextItem.index}] (${ttsLang}, pitch: ${utterance.pitch}, rate: ${utterance.rate}): "${nextItem.text.slice(0, 30)}..."`)
     }
   }, [setVoiceState, returnToIdleOrListeningRef])
 
-  // 読み上げテキストをキューに積む（言語指定可能）
+  // 読み上げテキストをキューに積む（言語・感情設定可能）
   const queueBrowserTts = useCallback(
-    (text: string, index: number, language?: string) => {
-      browserTtsQueueRef.current.push({ text, index, language })
+    (text: string, index: number, language?: string, pitch?: number, rate?: number) => {
+      browserTtsQueueRef.current.push({ text, index, language, pitch, rate })
       speakNextBrowserTts()
     },
     [speakNextBrowserTts]

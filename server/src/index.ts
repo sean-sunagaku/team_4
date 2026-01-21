@@ -6,6 +6,7 @@ import { routeRoutes } from "./routes/route.routes.js";
 import { voiceRoutes } from "./routes/voice.routes.js";
 import { websocketHandler } from "./websocket/asr-handler.js";
 import { PORT, logStartupInfo } from "./config/app.config.js";
+import type { WebSocketData } from "./types/common.types.js";
 
 const app = new Hono();
 
@@ -32,7 +33,7 @@ const server = Bun.serve({
   fetch(req, serverInstance) {
     const url = new URL(req.url);
     if (url.pathname === "/ws/asr") {
-      const upgraded = serverInstance.upgrade(req);
+      const upgraded = serverInstance.upgrade(req, { data: {} as WebSocketData });
       if (upgraded) {
         return undefined;
       }
