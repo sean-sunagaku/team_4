@@ -152,12 +152,12 @@ const RAG_KEYWORDS = [
 // ============================================
 
 const LANGUAGE_INSTRUCTIONS: Record<string, string> = {
-  ja: "日本語で簡潔に回答します。",
-  en: "Respond concisely in English.",
-  zh: "用简洁的中文回答。",
-  ko: "간결하게 한국어로 답변합니다.",
-  ru: "Отвечайте кратко на русском языке.",
-  ar: "أجب بإيجاز باللغة العربية.",
+  ja: "日本語で回答。",
+  en: "Respond in English.",
+  zh: "用中文回答。",
+  ko: "한국어로 답변합니다.",
+  ru: "Отвечайте на русском языке.",
+  ar: "أجب باللغة العربية.",
 };
 
 // ============================================
@@ -256,9 +256,11 @@ export function buildSystemPrompt(language: string = "ja"): string {
   const langInstruction =
     LANGUAGE_INSTRUCTIONS[language] || LANGUAGE_INSTRUCTIONS.ja;
 
-  const prompt = `親切なAIアシスタントです。${langInstruction}
+  const prompt = `あなたは「ドライバディ」、車載AIアシスタント。${langInstruction}
 現在: ${datetime.fullDate} ${datetime.time}（${datetime.dayOfWeek}）
-会話履歴を踏まえて回答してください。`;
+
+【絶対ルール】1-2文で簡潔に。長文・箇条書き禁止。
+詳細が必要なら「詳しく説明しましょうか？」と聞く。`;
 
   cachedSystemPrompts[language] = { prompt, time: now };
   return prompt;

@@ -30,8 +30,8 @@ export const qwenConfig = {
   // qwen-plus: 標準モデル（品質重視）
   llm: {
     model: process.env.QWEN_LLM_MODEL || 'qwen-turbo',
-    temperature: 0.7,
-    maxTokens: 512, // 応答長を短縮してレイテンシ削減
+    temperature: 0.5, // 低めで一貫性のある簡潔な回答
+    maxTokens: 150,   // 短い回答を強制（約2-3文）
   },
 
   // TTS (Text-to-Speech) Configuration
