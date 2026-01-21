@@ -74,6 +74,8 @@
 
 .ai-chat-button--recording .star-icon {
   /* アイコンはそのまま表示 */
+  width: 100% !important;
+  height: 100% !important;
 }
 
 /* Processing state */
@@ -128,19 +130,21 @@
   height: 100%;
 }
 
-.star-icon--listening {
+.ai-chat-button .star-icon--listening {
   animation: listeningBreathe 2s ease-in-out infinite;
+  width: 100% !important;
+  height: 100% !important;
 }
 
 .listening-text {
   background: #4A9EFF !important;
 }
 
-.star-icon {
+.ai-chat-button .star-icon {
   z-index: 1;
   position: relative;
-  width: 100%;
-  height: 100%;
+  width: 100% !important;
+  height: 100% !important;
   object-fit: cover;
   border-radius: 50%;
   transform: scale(1);
@@ -351,9 +355,9 @@
     height: 56px;
   }
 
-  .star-icon {
-    width: 20px;
-    height: 20px;
+  .ai-chat-button .star-icon {
+    width: 100% !important;
+    height: 100% !important;
   }
 }
 

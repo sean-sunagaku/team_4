@@ -43,14 +43,22 @@ const LoadingScreen = ({ step, onComplete }: LoadingScreenProps) => {
     <div className="loading-overlay">
       <div className="loading-modal">
         <div className="loading-content">
-          <div className="car-character">
+          <div className="loading-car-character">
             <video
               autoPlay
               loop
               muted
               playsInline
-              className="car-icon"
-              // poster="/diagonal-icon.svg"
+              className="loading-car-icon"
+              onEnded={(e) => {
+                // ループが効かない場合の対策
+                const video = e.currentTarget;
+                video.currentTime = 0;
+                video.play();
+              }}
+              onError={(e) => {
+                console.error('Video error:', e);
+              }}
             >
               <source src="/driBuddy_animation.mp4" type="video/mp4" />
             </video>
