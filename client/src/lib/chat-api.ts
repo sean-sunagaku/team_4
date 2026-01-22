@@ -1,5 +1,10 @@
 const API_URL = (import.meta as any).env?.VITE_API_URL || "http://localhost:3001";
 
+export interface Location {
+  lat: number;
+  lng: number;
+}
+
 export const chatApi = {
   // Voice chat - send audio and receive streaming response
   // 注: transcriptが指定されると、サーバー側でASRをスキップして高速化
@@ -18,14 +23,15 @@ export const chatApi = {
     ttsMode: 'browser' | 'qwen' = 'browser',
     language?: string, // 言語ヒント（オプション）
     emotion?: string | null, // 感情（WebSocket ASRで検出された感情）
-    transcript?: string // WebSocket ASRからの事前転写（ASRスキップ用）
+    transcript?: string, // WebSocket ASRからの事前転写（ASRスキップ用）
+    location?: Location // 現在地（オプション）
   ): Promise<void> {
     const response = await fetch(`${API_URL}/api/voice/chat`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ audioData, audioFormat, ttsMode, language, emotion, transcript }),
+      body: JSON.stringify({ audioData, audioFormat, ttsMode, language, emotion, transcript, location }),
     });
 
     if (!response.ok) {

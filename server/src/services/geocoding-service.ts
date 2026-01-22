@@ -60,3 +60,48 @@ export async function geocodeAddress(address: string): Promise<GeocodingResultDa
     placeId: result.place_id,
   };
 }
+
+/**
+ * 逆ジオコーディング - 座標から住所を取得
+ */
+export async function reverseGeocode(location: Coordinates): Promise<GeocodingResultData> {
+  const apiKey = process.env.GOOGLE_API_KEY;
+  if (!apiKey) {
+    throw RouteError.internal("GOOGLE_API_KEY is not set");
+  }
+
+  const url = new URL(GEOCODING_API_URL);
+  url.searchParams.set("latlng", `${location.lat},${location.lng}`);
+  url.searchParams.set("key", apiKey);
+  url.searchParams.set("language", "ja");
+  url.searchParams.set("region", "jp");
+
+  const response = await fetch(url.toString());
+
+  if (!response.ok) {
+    throw RouteError.geocoding(
+      `Reverse geocoding API request failed: ${response.status}`,
+      { status: response.status }
+    );
+  }
+
+  const data = (await response.json()) as GeocodingResponse;
+
+  if (data.status !== "OK") {
+    throw RouteError.geocoding(
+      `Reverse geocoding failed: ${data.status}`,
+      { status: data.status, errorMessage: data.error_message }
+    );
+  }
+
+  const result = data.results[0];
+  if (!result) {
+    throw RouteError.geocoding("No reverse geocoding results found", { location });
+  }
+
+  return {
+    address: result.formatted_address,
+    location: location,
+    placeId: result.place_id,
+  };
+}

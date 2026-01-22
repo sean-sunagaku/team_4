@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { LoadScript } from '@react-google-maps/api'
 import AIChatButton, { VideoModalData } from './components/aiChat/AIChatButton'
 import MainPanel from './components/MainPanel'
@@ -22,7 +22,7 @@ function App() {
   const [showPracticeSelector, setShowPracticeSelector] = useState(false)
   const [missionSteps, setMissionSteps] = useState<string[]>([])
   const [, setGoogleMapsNavUrl] = useState<string | null>(null)
-  const [currentLocation, setCurrentLocation] = useState<string>('')
+  const [currentLocation, setCurrentLocation] = useState<{ lat: number; lng: number } | null>(null)
   const [videoModal, setVideoModal] = useState<{ isOpen: boolean; data: VideoModalData | null }>({
     isOpen: false,
     data: null,
@@ -35,6 +35,50 @@ function App() {
     calculateRouteFromLocations,
     clearRoute,
   } = useNavigation()
+
+  // アプリ起動時に位置情報を取得
+  useEffect(() => {
+    const fetchLocation = async () => {
+      try {
+        // ブラウザの Geolocation API で現在地を取得
+        const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+          if (!navigator.geolocation) {
+            reject(new Error('Geolocation is not supported by this browser.'))
+            return
+          }
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 0,
+          })
+        })
+
+        const location = {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        }
+        setCurrentLocation(location)
+        console.log('アプリ起動時に現在地を取得しました:', location)
+      } catch (error) {
+        console.error('位置情報の取得に失敗しました:', error)
+        // フォールバック: IP APIで現在地を取得
+        try {
+          const res = await fetch('https://ipapi.co/json/')
+          const data = await res.json()
+          const location = {
+            lat: data.latitude,
+            lng: data.longitude,
+          }
+          setCurrentLocation(location)
+          console.log('IP APIで現在地を取得しました:', location)
+        } catch (ipError) {
+          console.error('IP APIでの位置情報取得も失敗しました:', ipError)
+        }
+      }
+    }
+
+    fetchLocation()
+  }, [])
 
   // ビデオモーダル表示ハンドラー
   const handleShowVideoModal = useCallback((data: VideoModalData) => {
@@ -68,11 +112,25 @@ function App() {
       setLoadingStep('location')
 
       try {
-        // IP APIで現在地を取得
-        const res = await fetch('https://ipapi.co/json/')
-        const data = await res.json()
-        const locationString = `${data.latitude}, ${data.longitude}`
-        setCurrentLocation(locationString)
+        // ブラウザの Geolocation API で現在地を取得
+        const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+          if (!navigator.geolocation) {
+            reject(new Error('Geolocation is not supported by this browser.'))
+            return
+          }
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 0,
+          })
+        })
+
+        const location = {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        }
+        setCurrentLocation(location)
+        console.log('現在地を取得しました:', location)
 
         // 取得完了後、苦手ポイント選択画面へ
         setTimeout(() => {
@@ -81,6 +139,19 @@ function App() {
         }, 1500)
       } catch (error) {
         console.error('位置情報の取得に失敗しました:', error)
+        // フォールバック: IP APIで現在地を取得
+        try {
+          const res = await fetch('https://ipapi.co/json/')
+          const data = await res.json()
+          const location = {
+            lat: data.latitude,
+            lng: data.longitude,
+          }
+          setCurrentLocation(location)
+          console.log('IP APIで現在地を取得しました:', location)
+        } catch (ipError) {
+          console.error('IP APIでの位置情報取得も失敗しました:', ipError)
+        }
         setLoadingStep(null)
         setShowPracticeSelector(true)
       }
@@ -93,6 +164,13 @@ function App() {
     setShowPracticeSelector(false)
     setLoadingStep('generating')
 
+    if (!currentLocation) {
+      alert('現在地が取得できていません。再度お試しください。')
+      setLoadingStep(null)
+      setScreen('home')
+      return
+    }
+
     try {
       const response = await fetch(`${API_BASE_URL}/api/route/suggest`, {
         method: 'POST',
@@ -100,7 +178,10 @@ function App() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          origin: currentLocation,
+          origin: {
+            lat: currentLocation.lat,
+            lng: currentLocation.lng,
+          },
           practiceType: practiceType,
           constraints: {
             avoidHighways: true,
@@ -248,7 +329,7 @@ function App() {
         </div>
 
         {/* AIチャットボタン */}
-        <AIChatButton alwaysListen={true} onShowModal={handleShowVideoModal} />
+        <AIChatButton alwaysListen={true} onShowModal={handleShowVideoModal} location={currentLocation ?? undefined} />
 
         {/* ローディング画面 */}
         {loadingStep && (

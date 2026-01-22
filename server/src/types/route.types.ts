@@ -159,8 +159,13 @@ export interface PlacesNearbyRequest {
 // API リクエスト/レスポンス（Zodスキーマ）
 // ============================================
 
+export const CoordinatesSchema = z.object({
+  lat: z.number().min(-90).max(90, "緯度は-90から90の範囲です"),
+  lng: z.number().min(-180).max(180, "経度は-180から180の範囲です"),
+});
+
 export const RouteSuggestRequestSchema = z.object({
-  origin: z.string().min(1, "出発地点は必須です"),
+  origin: CoordinatesSchema.describe("出発地点の座標"),
   practiceType: z.enum(PRACTICE_TYPES, "無効な練習タイプです"),
   constraints: z
     .object({

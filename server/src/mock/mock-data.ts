@@ -14,7 +14,7 @@
  * true: モックデータを使用
  * false: 実際のデータを使用
  */
-export const MOCK_ENABLED = true;
+export const MOCK_ENABLED = false;
 
 // ============================================
 // Mock Location

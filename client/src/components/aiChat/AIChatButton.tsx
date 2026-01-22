@@ -26,15 +26,21 @@ export interface VideoModalData {
   description?: string
 }
 
+interface Location {
+  lat: number
+  lng: number
+}
+
 interface AIChatButtonProps {
   autoStart?: boolean
   placement?: 'floating' | 'inline'
   alwaysListen?: boolean // 常時待機モード
   onShowModal?: (data: VideoModalData) => void // ビデオモーダル表示コールバック
+  location?: Location // 現在地（オプション）
 }
 
 // 画面状態と音声フロー（待機→録音→送信→再生→復帰）を束ねるコントローラ
-const AIChatButton = ({ autoStart = false, placement = 'floating', alwaysListen = false, onShowModal }: AIChatButtonProps) => {
+const AIChatButton = ({ autoStart = false, placement = 'floating', alwaysListen = false, onShowModal, location }: AIChatButtonProps) => {
   const [voiceState, setVoiceState] = useState<VoiceState>('idle')
   const [selectedLanguage, setSelectedLanguage] = useState<SupportedLanguage>('ja')
   const selectedLanguageRef = useRef<SupportedLanguage>('ja')
@@ -141,13 +147,14 @@ const AIChatButton = ({ autoStart = false, placement = 'floating', alwaysListen 
         "qwen", // Use Qwen TTS mode
         languageHint,
         emotion,
-        preTranscript || undefined
+        preTranscript || undefined,
+        location
       )
     } catch (error) {
       console.error('Failed to send voice message:', error)
       setVoiceState('idle')
     }
-  }, [queueAudio, queueBrowserTts, resetAudioQueue, resetBrowserTtsQueue])
+  }, [queueAudio, queueBrowserTts, resetAudioQueue, resetBrowserTtsQueue, location])
 
   // startListening用のref（循環参照を避けるため）
   const startListeningRef = useRef<() => void>(() => {})

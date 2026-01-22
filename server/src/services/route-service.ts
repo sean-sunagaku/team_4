@@ -3,7 +3,7 @@
  */
 
 import { getSearchConfig } from "../config/route-search.config.js";
-import { geocodeAddress, type GeocodingResultData } from "./geocoding-service.js";
+import { reverseGeocode, type GeocodingResultData } from "./geocoding-service.js";
 import { searchNearbyPlaces } from "./places-service.js";
 import { selectRouteWithAI } from "./route-ai-service.js";
 import { generateGoogleMapsNavUrl } from "./maps-url-service.js";
@@ -13,10 +13,11 @@ import {
   type RouteConstraints,
   type RouteSuggestion,
   type POICandidate,
+  type Coordinates,
 } from "../types/route.types.js";
 
 export interface SuggestRouteParams {
-  origin: string;
+  origin: Coordinates;
   practiceType: PracticeType;
   constraints?: RouteConstraints;
 }
@@ -35,9 +36,9 @@ export interface SuggestRouteParams {
 async function suggestRoute(params: SuggestRouteParams): Promise<RouteSuggestion> {
   console.log("Starting route suggestion:", params);
 
-  // Step 1: 住所→座標変換
-  const geocodingResult = await geocodeAddress(params.origin);
-  console.log("Geocoding completed:", geocodingResult);
+  // Step 1: 座標→住所変換（逆ジオコーディング）
+  const geocodingResult = await reverseGeocode(params.origin);
+  console.log("Reverse geocoding completed:", geocodingResult);
 
   // Step 2: 検索設定取得
   const searchConfig = getSearchConfig(params.practiceType);
@@ -132,7 +133,7 @@ async function suggestRoute(params: SuggestRouteParams): Promise<RouteSuggestion
  */
 async function testGoogleApis(params: SuggestRouteParams): Promise<{
   geocoding: {
-    inputAddress: string;
+    inputCoordinates: Coordinates;
     resolvedAddress: string;
     location: { lat: number; lng: number };
   };
@@ -148,9 +149,9 @@ async function testGoogleApis(params: SuggestRouteParams): Promise<{
 }> {
   console.log("[TEST] Google Maps API test request:", params);
 
-  // Step 1: Geocoding
-  const geocodingResult = await geocodeAddress(params.origin);
-  console.log("[TEST] Geocoding成功:", geocodingResult);
+  // Step 1: Reverse Geocoding
+  const geocodingResult = await reverseGeocode(params.origin);
+  console.log("[TEST] Reverse Geocoding成功:", geocodingResult);
 
   // Step 2: Places検索
   const searchConfig = getSearchConfig(params.practiceType);
@@ -163,7 +164,7 @@ async function testGoogleApis(params: SuggestRouteParams): Promise<{
   if (candidates.length === 0) {
     return {
       geocoding: {
-        inputAddress: params.origin,
+        inputCoordinates: params.origin,
         resolvedAddress: geocodingResult.address,
         location: geocodingResult.location,
       },
@@ -203,7 +204,7 @@ async function testGoogleApis(params: SuggestRouteParams): Promise<{
 
   return {
     geocoding: {
-      inputAddress: params.origin,
+      inputCoordinates: params.origin,
       resolvedAddress: geocodingResult.address,
       location: geocodingResult.location,
     },

@@ -10,6 +10,7 @@ import {
   type SearchResponse,
 } from "./search-service.js";
 import { ragService } from "./rag-service.js";
+import { reverseGeocode } from "./geocoding-service.js";
 
 // ============================================
 // Types
@@ -351,9 +352,17 @@ export async function buildContext(options: ContextBuildOptions): Promise<BuiltC
     console.log("Car manual results added to context");
   }
 
-  // Add location info to system prompt if location search was triggered
-  if (shouldLocationSearch && location) {
-    systemPrompt += `\n\n現在地: 緯度${location.lat.toFixed(4)}, 経度${location.lng.toFixed(4)}`;
+  // Add location info to system prompt if location is available
+  if (location) {
+    try {
+      const geocodeResult = await reverseGeocode(location);
+      systemPrompt += `\n\n【現在地情報】\n住所: ${geocodeResult.address}`;
+      console.log(`Location context added: ${geocodeResult.address}`);
+    } catch (err) {
+      // 逆ジオコーディング失敗時は座標のみ追加
+      systemPrompt += `\n\n【現在地情報】\n座標: 緯度${location.lat.toFixed(4)}, 経度${location.lng.toFixed(4)}`;
+      console.error("Reverse geocoding failed, using coordinates:", err);
+    }
   }
 
   return {
