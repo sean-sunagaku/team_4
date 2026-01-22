@@ -28,7 +28,7 @@ const YouTubeVideoModal = ({ isOpen, onClose, data }: YouTubeVideoModalProps) =>
 
   // YouTubeのURLから動画IDを抽出（自動再生にはミュート必須）
   const getYouTubeEmbedUrl = (url: string): string => {
-    const match = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\s]+)/)
+    const match = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&?\s]+)/)
     const videoId = match ? match[1] : ''
     return `https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1`
   }
